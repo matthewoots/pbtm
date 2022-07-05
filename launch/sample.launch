@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<launch>
+<group ns="drone0">
+
+    <node pkg="pbtm" type="pbtm_node" name="pbtm_node" output="screen">
+        <param name="agent_id" value="drone0"/>
+        <param name="send_command_rate" value="20"/>
+        <param name="timeout" value="0.5"/>
+        <param name="takeoff_height" value="1.3"/>
+        <rosparam param="global_start_position">[1.0, 0.0, 0.0]</rosparam>
+        <rosparam param="height_range">[1.0, 5.0]</rosparam>
+        <param name="yaw_offset_rad" value="0.0"/>
+        <param name="order" value="4"/>
+        <param name="max_velocity" value="2.0"/>
+        <param name="knot_division" value="5"/>
+    </node>
+
+</group>
+</launch>

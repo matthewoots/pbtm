@@ -25,7 +25,8 @@ int main (int argc, char** argv)
     ros::init (argc, argv, "pbtm_node");
     ros::NodeHandle nh("~");
     pbtm_class pbtm_class(nh);
-    ros::spin();
+    ros::MultiThreadedSpinner spinner(2);
+    spinner.spin();
     return 0;
 
 }

@@ -21,13 +21,14 @@
 #include <string>
 #include <mutex>
 #include <iostream>
+#include <chrono>
+#include <ctime>
 #include <math.h>
 #include <random>
 #include <Eigen/Dense>
 #include <ros/ros.h>
 #include <random>
 
-#include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
 
 #include <geometry_msgs/Point.h>
@@ -102,14 +103,16 @@ class pbtm_class
         pbtm_class::state_command cmd_nwu;
 
         bspline_trajectory bsu;
+        common_trajectory_tool ctt;
 
         ros::ServiceClient arming_client; 
         ros::ServiceClient set_mode_client; 
         mavros_msgs::CommandBool arm_cmd;
+        mavros_msgs::State uav_current_state;
 
         ros::NodeHandle _nh;
-        ros::Subscriber _pos_sub;
-        ros::Publisher _pose_nwu_pub, _local_pos_raw_pub;
+        ros::Subscriber _pos_sub, _waypoint_sub, _state_sub;
+        ros::Publisher _pose_nwu_pub, _local_pos_raw_pub, _log_path_pub;
 
         ros::Timer _drone_timer;
 
@@ -118,11 +121,20 @@ class pbtm_class
 
         // Offboard enabled means that offboard control is active and also uav is armed
         bool _offboard_enabled = false;
+        bool _setup = false, _state_check = false;
+        double takeoff_land_velocity = 0.3;
         int uav_id, uav_task;
         std::string _id;
         double _send_command_interval, _send_command_rate;
-        double _timeout, _nwu_yaw_offset, last_yaw;
+        double _timeout, _nwu_yaw_offset, last_yaw, _takeoff_height;
         Eigen::Vector3d _start_global_nwu;
+
+        /** @brief Bspline parameters **/
+        int _knot_division, _knot_size;
+        double _order, _max_velocity;
+        double _knot_interval, _duration;
+        time_point<std::chrono::system_clock> stime; // start time for bspline server in time_t
+        vector<double> timespan;
 
         std::mutex send_command_mutex;
         std::mutex pose_mutex;
@@ -131,7 +143,10 @@ class pbtm_class
         Eigen::Affine3d current_transform_enu, global_nwu_pose, home_transformation;
         Eigen::Affine3d global_to_local_t, local_to_global_t;
 
+        nav_msgs::Path path;
+
         vector<Eigen::Vector3d> wp_pos_vector;
+        vector<Eigen::Vector3d> control_points;
         vector<double> height_list;
 
         // w, x, y, z
@@ -143,7 +158,8 @@ class pbtm_class
         {
             _nh.param<std::string>("agent_id", _id, "drone0");
             _nh.param<double>("send_command_rate", _send_command_rate, 1.0);
-            _nh.param<double>("command_timeout", _timeout, 0.5);
+            _nh.param<double>("timeout", _timeout, 0.5);
+            _nh.param<double>("takeoff_height", _takeoff_height, 1.0);
 
             std::vector<double> position_list;
             _nh.getParam("global_start_position", position_list);
@@ -153,8 +169,12 @@ class pbtm_class
 
             // height min followed by height max
             _nh.getParam("height_range", height_list);
-
             _nh.param<double>("yaw_offset_rad", _nwu_yaw_offset, 0.0);
+
+            /** @brief Bspline parameters **/
+            _nh.param<double>("order", _order, 1.0);
+            _nh.param<double>("max_velocity", _max_velocity, 1.0);
+            _nh.param<int>("knot_division", _knot_division, 1);
 
             _send_command_interval = 1 / _send_command_rate;
 
@@ -189,9 +209,15 @@ class pbtm_class
             uav_id = stoi(uav_id_char);
 
             /* ------------ Subscribers ------------ */
+            /** @brief Get Mavros State of PX4 */
+            _state_sub = _nh.subscribe<mavros_msgs::State>(
+                "/" + _id + "/mavros/state", 10, boost::bind(&pbtm_class::uavStateCallBack, this, _1));
             /** @brief Subscriber that receives local position via mavros */
             _pos_sub = _nh.subscribe<geometry_msgs::PoseStamped>(
                 "/" + _id + "/mavros/local_position/pose", 20, &pbtm_class::pose_callback, this);
+            /** @brief Subscriber that receives waypoint information from user */
+            _waypoint_sub = _nh.subscribe<trajectory_msgs::JointTrajectory>(
+                "/trajectory/points", 20, &pbtm_class::waypoint_command_callback, this);
             
 
             /* ------------ Publishers ------------ */
@@ -200,7 +226,9 @@ class pbtm_class
                 "/" + _id + "/mavros/setpoint_raw/local", 20);
             /** @brief Publisher that publishes global_pose in nwu frame */
             _pose_nwu_pub = _nh.advertise<geometry_msgs::PoseStamped>(
-                "/" + _id + "/pose/nwu", 20);
+                "/" + _id + "/uav/nwu", 20);
+            _log_path_pub = _nh.advertise<nav_msgs::Path>(
+                "/" + _id + "/uav/log_path", 10, true);
 
 
             /* ------------ Timers ------------ */
@@ -217,11 +245,16 @@ class pbtm_class
             set_mode_client = _nh.serviceClient<mavros_msgs::SetMode>(
                 "/" + _id + "/mavros/set_mode");
 
-            printf("%sdrone%d%s global_start_pose [%s%.2lf %.2lf %.2lf%s]! \n", 
+            printf("[%sdrone%d%s pbtm.h] global_start_pose [%s%.2lf %.2lf %.2lf%s]! \n", 
                 KGRN, uav_id, KNRM,
                 KBLU, _start_global_nwu(0), _start_global_nwu(1), _start_global_nwu(2), KNRM);
+            printf("[%sdrone%d%s pbtm.h] height_range [%s%.2lf %.2lf%s]! \n", 
+                KGRN, uav_id, KNRM,
+                KBLU, height_list[0], height_list[1], KNRM);
+            printf("[%sdrone%d%s pbtm.h] yaw_offset_rad [%s%.2lf%s]! \n", 
+                KGRN, uav_id, KNRM, KBLU, _nwu_yaw_offset, KNRM);
 
-            printf("%sdrone%d%s started! \n", KGRN, uav_id, KNRM);
+            printf("%s[drone%d%s pbtm.h] constructed! \n", KGRN, uav_id, KNRM);
             _drone_timer.start();
         }
 
@@ -230,19 +263,28 @@ class pbtm_class
             _drone_timer.stop();
         }
 
-        bool check_sent_command(double tolerance);
+        bool check_last_time(double tolerance, ros::Time time);
 
         void drone_timer(const ros::TimerEvent &);
 
         void send_command();
 
+        void initialize_bspline_server(double desired_velocity);
+
+        bool update_get_command_by_time();
+
+        void check_mavros_state();
+
         void set_offboard();
 
         void stop_and_hover();
 
+        void visualize_log_path();
+
         /** @brief callbacks */
         void pose_callback(const geometry_msgs::PoseStampedConstPtr& msg);
         void waypoint_command_callback(const trajectory_msgs::JointTrajectory::ConstPtr &msg);
+        void uavStateCallBack(const mavros_msgs::State::ConstPtr &msg);
 
         /** @brief common utility functions */
         int joint_trajectory_to_waypoint(trajectory_msgs::JointTrajectory jt);
