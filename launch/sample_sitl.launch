@@ -66,7 +66,7 @@
             <param name="yaw_offset_rad" value="0.0"/>
             <param name="order" value="4"/>
             <param name="max_velocity" value="2.0"/>
-            <param name="knot_division" value="5"/>
+            <param name="knot_division" value="3"/>
         </node>
     </group>
 

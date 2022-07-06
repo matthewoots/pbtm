@@ -40,6 +40,7 @@ namespace helper
 {
     // *** Helper functions ***
 
+    /** @brief rotate_vector rotating a Vector3d with a rotation **/
     Eigen::Vector3d rotate_vector(
         Eigen::Vector3d rotation, Eigen::Vector3d translation)
     {
@@ -64,6 +65,7 @@ namespace helper
         return rotatedP.vec();
     }
 
+    /** @brief similar to the ROS euler rpy which does not require the tf library, hence independent of ROS but yield the same rotation **/
     Eigen::Vector3d euler_rpy(Eigen::Matrix3d R)
     {
         Eigen::Vector3d euler_out;
@@ -105,6 +107,7 @@ namespace helper
         return euler_out;
     }
 
+    /** @brief vector_to_point Eigen to Ros **/
     geometry_msgs::Point vector_to_point(Eigen::Vector3d v)
     {
         geometry_msgs::Point tmp;
@@ -115,6 +118,7 @@ namespace helper
         return tmp;
     }
 
+    /** @brief point_to_vector Ros to Eigen **/
     Eigen::Vector3d point_to_vector(geometry_msgs::Point p)
     {
         Eigen::Vector3d tmp;
@@ -125,6 +129,7 @@ namespace helper
         return tmp;
     }
 
+    /** @brief vector_to_ros_vector Eigen to Ros **/
     geometry_msgs::Vector3 vector_to_ros_vector(Eigen::Vector3d v)
     {
         geometry_msgs::Vector3 tmp;
@@ -135,6 +140,7 @@ namespace helper
         return tmp;
     }
 
+    /** @brief ros_vector_to_vector Ros to Eigen **/
     Eigen::Vector3d ros_vector_to_vector(geometry_msgs::Vector3 rv)
     {
         Eigen::Vector3d tmp;
@@ -145,6 +151,7 @@ namespace helper
         return tmp;
     }
 
+    /** @brief quaternion_to_orientation Eigen to Ros **/
     geometry_msgs::Quaternion quaternion_to_orientation(
         Eigen::Quaterniond q)
     {
@@ -157,6 +164,7 @@ namespace helper
         return tmp;
     }
 
+    /** @brief orientation_to_quaternion Ros to Eigen **/
     Eigen::Quaterniond orientation_to_quaternion(
         geometry_msgs::Quaternion q)
     {
@@ -185,6 +193,7 @@ namespace helper
         return x - M_PI_2;
     }
 
+    /** @brief posestamped_to_affine posestamped message to eigen affine **/
     Eigen::Affine3d posestamped_to_affine(geometry_msgs::PoseStamped ps)
     {
         Eigen::Affine3d output = Eigen::Affine3d::Identity();
@@ -205,6 +214,7 @@ namespace helper
         return output;
     }
 
+    /** @brief calculate_quadcopter_orientation using acceleration to determine orientation of quadcopter **/
     Eigen::Quaterniond calculate_quadcopter_orientation(
         Eigen::Vector3d acc, double yaw_rad)
     {

@@ -67,6 +67,7 @@ class pbtm_class
 {
     private:
 
+        /** @brief VehicleTask determines the task description/mode of the agent **/
         enum VehicleTask
         {
             kIdle,
@@ -77,6 +78,7 @@ class pbtm_class
             kLand
         };
 
+        /** @brief TaskToString interprets the input mission_value **/
         const std::string TaskToString(int v)
         {
             switch (v)
@@ -91,6 +93,7 @@ class pbtm_class
             }
         }
 
+        /** @brief state_command structure to unify command values to setpoint_raw local **/
         struct state_command
         {
             Eigen::Vector3d pos;
@@ -99,27 +102,32 @@ class pbtm_class
             Eigen::Quaterniond q;
             double t;
         };
-
         pbtm_class::state_command cmd_nwu;
 
+        /** @brief classes from libbspline packages (functions) that are used in this package **/
         bspline_trajectory bsu;
         common_trajectory_tool ctt;
 
-        ros::ServiceClient arming_client; 
-        ros::ServiceClient set_mode_client; 
+        /** @brief Service clients **/
+        ros::ServiceClient arming_client, set_mode_client; 
+        /** @brief Handles mavros states and arming mode **/
         mavros_msgs::CommandBool arm_cmd;
         mavros_msgs::State uav_current_state;
 
         ros::NodeHandle _nh;
+
+        /** @brief Subscribers **/
         ros::Subscriber _pos_sub, _waypoint_sub, _state_sub;
+        /** @brief Publishers **/
         ros::Publisher _pose_nwu_pub, _local_pos_raw_pub, _log_path_pub;
 
+        /** @brief Timers **/
         ros::Timer _drone_timer;
 
-        ros::Time _last_pose_time;
-        ros::Time _prev_command_time;
+        /** @brief Saving ros::Time information of various data **/
+        ros::Time _last_pose_time, _prev_command_time;
 
-        // Offboard enabled means that offboard control is active and also uav is armed
+        /** Offboard enabled means that offboard control is active and also uav is armed **/
         bool _offboard_enabled = false;
         bool _setup = false, _state_check = false;
         double takeoff_land_velocity = 0.3;
@@ -136,24 +144,28 @@ class pbtm_class
         time_point<std::chrono::system_clock> stime; // start time for bspline server in time_t
         vector<double> timespan;
 
+        /** @brief mutexes **/
         std::mutex send_command_mutex;
         std::mutex pose_mutex;
         std::mutex waypoint_command_mutex;
 
+        /** @brief Important transformations that handle global and local conversions **/
         Eigen::Affine3d current_transform_enu, global_nwu_pose, home_transformation;
         Eigen::Affine3d global_to_local_t, local_to_global_t;
 
+        /** @brief For path visualization **/
         nav_msgs::Path path;
 
         vector<Eigen::Vector3d> wp_pos_vector;
         vector<Eigen::Vector3d> control_points;
         vector<double> height_list;
 
-        // w, x, y, z
+        /** @brief Conversion (rotation) from enu to nwu in the form of w, x, y, z **/
         Quaterniond enu_to_nwu() {return Quaterniond(0.7073883, 0, 0, 0.7068252);}
     
     public:
 
+        /** @brief Constructor **/
         pbtm_class(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
         {
             _nh.param<std::string>("agent_id", _id, "drone0");
@@ -258,27 +270,37 @@ class pbtm_class
             _drone_timer.start();
         }
 
+        /** @brief Destructor **/
         ~pbtm_class()
         {
             _drone_timer.stop();
         }
 
+        /** @brief check_last_time helps to check whether queried ros::Time satisfy the tolerance margin in the input with the current time **/
         bool check_last_time(double tolerance, ros::Time time);
 
+        /** @brief Main timer (thread) for sending commands and switch modes **/
         void drone_timer(const ros::TimerEvent &);
 
+        /** @brief Pack pbtm_class::state_command cmd_nwu into setpoint_raw/local and publishes it **/
         void send_command();
 
+        /** @brief Initializes the bspline parameters and also sets up the control points **/
         void initialize_bspline_server(double desired_velocity);
 
+        /** @brief To get the command after the Bspline server has started **/
         bool update_get_command_by_time();
 
+        /** @brief Check the state of mavros (connection with FCU) **/
         void check_mavros_state();
 
+        /** @brief Set offboard mode (or tries to set it) **/
         void set_offboard();
 
+        /** @brief stop and hover just sets any last velocity and acceleration command to 0 so that there will be no feedforward **/
         void stop_and_hover();
 
+        /** @brief visualization of the path/trajectory (control points) **/
         void visualize_log_path();
 
         /** @brief callbacks */

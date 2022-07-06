@@ -36,7 +36,7 @@ def generate_random_point(prev):
 
 def waypoint_publisher():
     rospy.init_node('waypoint_publisher', anonymous=True)
-    rate_hz = 0.08
+    rate_hz = 0.1
     rate = rospy.Rate(rate_hz) # 0.08hz
     start_sleep = rospy.Rate(0.5) # 0.5hz
 
