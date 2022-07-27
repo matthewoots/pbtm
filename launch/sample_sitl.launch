@@ -67,6 +67,7 @@
             <param name="order" value="4"/>
             <param name="max_velocity" value="2.0"/>
             <param name="knot_division" value="3"/>
+            <param name="use_px4ctrl" value="false"/>
         </node>
     </group>
 
