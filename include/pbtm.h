@@ -40,6 +40,7 @@
 #include <mavros_msgs/SetMode.h>
 #include <mavros_msgs/PositionTarget.h>
 #include <mavros_msgs/State.h>
+#include <mavros_msgs/AttitudeTarget.h>
 
 #include <trajectory_msgs/JointTrajectory.h>
 #include <trajectory_msgs/JointTrajectoryPoint.h>
@@ -119,9 +120,9 @@ class pbtm_class
         ros::NodeHandle _nh;
 
         /** @brief Subscribers **/
-        ros::Subscriber _pos_sub, _waypoint_sub, _state_sub, _bypass_sub;
+        ros::Subscriber _pos_sub, _vel_sub, _waypoint_sub, _state_sub, _bypass_sub;
         /** @brief Publishers **/
-        ros::Publisher _pose_nwu_pub, _local_pos_raw_pub, _log_path_pub, _bypass_target_pub;
+        ros::Publisher _pose_nwu_pub, _local_pos_raw_pub, _log_path_pub, _bypass_target_pub, _att_rate_pub;
 
         /** @brief Timers **/
         ros::Timer _drone_timer;
@@ -158,6 +159,24 @@ class pbtm_class
         /** @brief Important transformations that handle global and local conversions **/
         Eigen::Affine3d current_transform_enu, global_nwu_pose, home_transformation;
         Eigen::Affine3d global_to_local_t, local_to_global_t;
+
+        Eigen::Vector3d uav_local_vel_enu; // uav local velocity in ENU
+        Eigen::Vector3d uav_att_rate; // uav attitude rate
+
+        // Control gains (position, velocity, drag)
+        Eigen::Vector3d Kpos_, Kvel_, D_;
+        Eigen::Vector3d gravity_;
+        double Kpos_x_, Kpos_y_, Kpos_z_, Kvel_x_, Kvel_y_, Kvel_z_;
+
+        bool px4Ctrl;
+        bool using_yawTgt;
+        double yaw_ref;
+        double max_fb_acc_;
+        double attctrl_tau_;
+        double norm_thrust_offset_;
+        double norm_thrust_const_;
+        Eigen::Vector4d q_des, uav_attitude_q;
+        Eigen::Vector4d cmdBodyRate_;  //{wx, wy, wz, Thrust}
 
         /** @brief For path visualization **/
         nav_msgs::Path path;
@@ -198,6 +217,32 @@ class pbtm_class
             _nh.param<double>("bypass_timeout", _bypass_timeout, 2.0);
             _nh.param<double>("takeoff_land_velocity", takeoff_land_velocity, 0.2);
 
+            /** @brief Control gains**/
+            _nh.param<double>("gains/p_x", Kpos_x_, 8.0);
+            _nh.param<double>("gains/p_y", Kpos_y_, 8.0);
+            _nh.param<double>("gains/p_z", Kpos_z_, 10.0);
+            _nh.param<double>("gains/v_x", Kvel_x_, 1.5);
+            _nh.param<double>("gains/v_y", Kvel_y_, 1.5);
+            _nh.param<double>("gains/v_z", Kvel_z_, 3.3);
+
+            _nh.param<bool>("use_px4ctrl", px4Ctrl, true);
+            _nh.param<bool>("use_yawTarget", using_yawTgt, false);
+            _nh.param<double>("max_acc", max_fb_acc_, 9.0);
+
+            _nh.param<double>("attctrl_constant", attctrl_tau_, 0.1);
+            _nh.param<double>("normalizedthrust_offset", norm_thrust_offset_, 0.1);
+            _nh.param<double>("normalizedthrust_constant", norm_thrust_const_, 0.05);
+
+            Kpos_ = Vector3d(-Kpos_x_, -Kpos_y_, -Kpos_z_);
+            Kvel_ = Vector3d(-Kvel_x_, -Kvel_y_, -Kvel_z_);
+
+            std::cout << "Position gains are: " << Kpos_.transpose() << std::endl;
+            std::cout << "Velocity gains are: " << Kvel_.transpose() << std::endl;
+
+            uav_local_vel_enu = Vector3d(0.0, 0.0, 0.0);
+            uav_att_rate = Vector3d(0.0, 0.0, 0.0);
+            gravity_ = Vector3d(0.0, 0.0, -9.8);
+
             _send_command_interval = 1 / _send_command_rate;
 
             // Reset uav task to idle
@@ -237,6 +282,9 @@ class pbtm_class
             /** @brief Subscriber that receives local position via mavros */
             _pos_sub = _nh.subscribe<geometry_msgs::PoseStamped>(
                 "/" + _id + "/mavros/local_position/pose", 20, &pbtm_class::pose_callback, this);
+            /** @brief Subscriber that receives local velocity via mavros */
+            _vel_sub = _nh.subscribe<geometry_msgs::TwistStamped>(
+                "/" + _id + "/mavros/local_position/velocity_local", 20, &pbtm_class::vel_callback, this);
             /** @brief Subscriber that receives waypoint information from user */
             _waypoint_sub = _nh.subscribe<trajectory_msgs::JointTrajectory>(
                 "/trajectory/points", 20, &pbtm_class::waypoint_command_callback, this);
@@ -254,6 +302,11 @@ class pbtm_class
                 "/" + _id + "/uav/log_path", 10, true);
             _bypass_target_pub = _nh.advertise<geometry_msgs::PoseStamped>(
                 "/" + _id + "/goal", 10, true);
+
+            /**@brief Publisher attitude rate (roll, pitch, yaw, thrust)*/
+            _att_rate_pub = _nh.advertise<mavros_msgs::AttitudeTarget>(
+                "/" + _id + "/mavros/setpoint_raw/attitude", 1, true
+            );
 
 
             /* ------------ Timers ------------ */
@@ -315,9 +368,26 @@ class pbtm_class
 
         /** @brief callbacks */
         void pose_callback(const geometry_msgs::PoseStampedConstPtr& msg);
+        void vel_callback(const geometry_msgs::TwistStampedConstPtr& msg);
         void waypoint_command_callback(const trajectory_msgs::JointTrajectory::ConstPtr &msg);
         void uavStateCallBack(const mavros_msgs::State::ConstPtr &msg);
         void bypass_callback(const mavros_msgs::PositionTarget::ConstPtr &msg);
+
+        /** @brief Used by controller*/
+
+        double getYawFromVel(const Eigen::Vector3d &vel) {return atan2(vel(1), vel(0));};
+        Eigen::Vector4d acc2quaternion(const Eigen::Vector3d &vector_acc, const double &yaw);
+        Eigen::Vector4d rot2Quaternion(const Eigen::Matrix3d &R);
+        Eigen::Matrix3d quat2RotMatrix(const Eigen::Vector4d &q);
+
+        void computeBodyRateCmd(Eigen::Vector4d &bodyrate_cmd, const Eigen::Vector3d &a_des);
+
+        Eigen::Vector4d geometric_attcontroller(const Eigen::Vector4d &ref_att, const Eigen::Vector3d &ref_acc,
+                                                       Eigen::Vector4d &curr_att);
+
+        Eigen::Vector3d matrix_hat_inv(const Eigen::Matrix3d &m);
+
+
 
         /** @brief common utility functions */
         int joint_trajectory_to_waypoint(trajectory_msgs::JointTrajectory jt);

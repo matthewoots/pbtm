@@ -104,6 +104,13 @@ void pbtm_class::pose_callback(
 		msg->pose.orientation.x,
 		msg->pose.orientation.y,
 		msg->pose.orientation.z).toRotationMatrix();
+	
+	uav_attitude_q = Vector4d(
+		msg->pose.orientation.w,
+		msg->pose.orientation.x,
+		msg->pose.orientation.y,
+		msg->pose.orientation.z
+	);
 
 	Eigen::Vector3d local_enu_euler = euler_rpy(current_transform_enu.linear());
 	
@@ -117,6 +124,12 @@ void pbtm_class::pose_callback(
 	global_nwu.pose.position = vector_to_point(global_nwu_pose.translation());
 	global_nwu.pose.orientation = quaternion_to_orientation(q_nwu);
 	_pose_nwu_pub.publish(global_nwu);
+}
+
+void pbtm_class::vel_callback(const geometry_msgs::TwistStampedConstPtr& msg)
+{
+	uav_local_vel_enu = ros_vector_to_vector(msg->twist.linear);
+	uav_att_rate = ros_vector_to_vector(msg->twist.angular);
 }
 
 /** 
@@ -138,6 +151,8 @@ void pbtm_class::send_command()
 	Eigen::Vector3d enu_cmd_acc =
 		enu_to_nwu().toRotationMatrix() * cmd_nwu.acc;
 
+	if (px4Ctrl)
+	{
 	mavros_msgs::PositionTarget _cmd;
 
 	_cmd.header.stamp = ros::Time::now();
@@ -164,6 +179,58 @@ void pbtm_class::send_command()
 	// pos_sp.type_mask = 3072; // Ignore Yaw
 	// pos_sp.type_mask = 2048;
 	_local_pos_raw_pub.publish(_cmd);
+	}
+
+	else
+	{
+		std::cout << "Geometric Controller\n";
+
+		// control position
+		Eigen::Vector3d a_ref = enu_cmd_acc;
+
+		if(!using_yawTgt)
+		{
+			yaw_ref = getYawFromVel(uav_local_vel_enu);
+		}
+
+		yaw_ref = 0;
+		// reference attitude in quaternion
+		Eigen::Vector4d q_ref = acc2quaternion(a_ref - gravity_, yaw_ref);
+		Eigen::Matrix3d R_ref = quat2RotMatrix(q_ref);
+
+		Eigen::Vector3d pos_error = current_transform_enu.translation() - enu_cmd_pose.translation();
+		Eigen::Vector3d vel_error = uav_local_vel_enu - enu_cmd_vel;
+
+		// Position Controller
+		Eigen::Vector3d a_fb = Kpos_.asDiagonal() * pos_error + Kvel_.asDiagonal() * vel_error; // feedforward term for trajectory error
+	  	if (a_fb.norm() > max_fb_acc_)
+			a_fb = (max_fb_acc_ / a_fb.norm()) * a_fb; // Clip acceleration if reference is too large
+
+		// drag is omitted
+
+		// Reference acceleration
+  		Eigen::Vector3d a_des = a_fb + a_ref - gravity_;
+
+		// compute bodyrate command
+		
+		computeBodyRateCmd(cmdBodyRate_, a_des); // reference body rate is stored in cmdBodyRate_
+												 // reference attitude is stored in q_des
+		mavros_msgs::AttitudeTarget msg;
+		msg.header.stamp = ros::Time::now();
+  		msg.header.frame_id = "map";
+  		msg.body_rate.x = cmdBodyRate_(0);
+  		msg.body_rate.y = cmdBodyRate_(1);
+  		msg.body_rate.z = cmdBodyRate_(2);
+  		msg.type_mask = 128;  // Ignore orientation messages
+  		msg.orientation.w = q_des(0);
+  		msg.orientation.x = q_des(1);
+  		msg.orientation.y = q_des(2);
+  		msg.orientation.z = q_des(3);
+  		msg.thrust = cmdBodyRate_(3);
+		_att_rate_pub.publish(msg);
+	}
+
+
 
 }
 
@@ -658,4 +725,105 @@ void pbtm_class::visualize_log_path()
 
 	_log_path_pub.publish(path);
 
+}
+
+Eigen::Vector4d pbtm_class::acc2quaternion(const Eigen::Vector3d &vector_acc, const double &yaw)
+{
+//   Eigen::Quaterniond quat;
+  Eigen::Vector4d quat;
+  Eigen::Vector3d zb_des, yb_des, xb_des, proj_xb_des;
+  Eigen::Matrix3d rotmat;
+
+  proj_xb_des << std::cos(yaw), std::sin(yaw), 0.0;
+
+  zb_des = vector_acc / vector_acc.norm();
+  yb_des = zb_des.cross(proj_xb_des) / (zb_des.cross(proj_xb_des)).norm();
+  xb_des = yb_des.cross(zb_des) / (yb_des.cross(zb_des)).norm();
+
+  rotmat << xb_des(0), yb_des(0), zb_des(0), xb_des(1), yb_des(1), zb_des(1), xb_des(2), yb_des(2), zb_des(2);
+//   quat = rotmat;
+  quat = rot2Quaternion(rotmat);
+  return quat;
+}
+
+Eigen::Vector4d pbtm_class::rot2Quaternion(const Eigen::Matrix3d &R) {
+  Eigen::Vector4d quat;
+  double tr = R.trace();
+  if (tr > 0.0) {
+    double S = sqrt(tr + 1.0) * 2.0;  // S=4*qw
+    quat(0) = 0.25 * S;
+    quat(1) = (R(2, 1) - R(1, 2)) / S;
+    quat(2) = (R(0, 2) - R(2, 0)) / S;
+    quat(3) = (R(1, 0) - R(0, 1)) / S;
+  } else if ((R(0, 0) > R(1, 1)) & (R(0, 0) > R(2, 2))) {
+    double S = sqrt(1.0 + R(0, 0) - R(1, 1) - R(2, 2)) * 2.0;  // S=4*qx
+    quat(0) = (R(2, 1) - R(1, 2)) / S;
+    quat(1) = 0.25 * S;
+    quat(2) = (R(0, 1) + R(1, 0)) / S;
+    quat(3) = (R(0, 2) + R(2, 0)) / S;
+  } else if (R(1, 1) > R(2, 2)) {
+    double S = sqrt(1.0 + R(1, 1) - R(0, 0) - R(2, 2)) * 2.0;  // S=4*qy
+    quat(0) = (R(0, 2) - R(2, 0)) / S;
+    quat(1) = (R(0, 1) + R(1, 0)) / S;
+    quat(2) = 0.25 * S;
+    quat(3) = (R(1, 2) + R(2, 1)) / S;
+  } else {
+    double S = sqrt(1.0 + R(2, 2) - R(0, 0) - R(1, 1)) * 2.0;  // S=4*qz
+    quat(0) = (R(1, 0) - R(0, 1)) / S;
+    quat(1) = (R(0, 2) + R(2, 0)) / S;
+    quat(2) = (R(1, 2) + R(2, 1)) / S;
+    quat(3) = 0.25 * S;
+  }
+  return quat;
+}
+
+Eigen::Matrix3d pbtm_class::quat2RotMatrix(const Eigen::Vector4d &q) {
+  Eigen::Matrix3d rotmat;
+  rotmat << q(0) * q(0) + q(1) * q(1) - q(2) * q(2) - q(3) * q(3), 2 * q(1) * q(2) - 2 * q(0) * q(3),
+      2 * q(0) * q(2) + 2 * q(1) * q(3),
+
+      2 * q(0) * q(3) + 2 * q(1) * q(2), q(0) * q(0) - q(1) * q(1) + q(2) * q(2) - q(3) * q(3),
+      2 * q(2) * q(3) - 2 * q(0) * q(1),
+
+      2 * q(1) * q(3) - 2 * q(0) * q(2), 2 * q(0) * q(1) + 2 * q(2) * q(3),
+      q(0) * q(0) - q(1) * q(1) - q(2) * q(2) + q(3) * q(3);
+  return rotmat;
+}
+
+void pbtm_class::computeBodyRateCmd(Eigen::Vector4d &bodyrate_cmd, const Eigen::Vector3d &a_des)
+{
+	q_des = acc2quaternion(a_des, yaw_ref);
+	bodyrate_cmd = geometric_attcontroller(q_des, a_des, uav_attitude_q);
+}
+
+Eigen::Vector4d pbtm_class::geometric_attcontroller(const Eigen::Vector4d &ref_att, const Eigen::Vector3d &ref_acc,
+                                                       Eigen::Vector4d &curr_att) {
+  // Geometric attitude controller
+  // Attitude error is defined as in Lee, Taeyoung, Melvin Leok, and N. Harris McClamroch. "Geometric tracking control
+  // of a quadrotor UAV on SE (3)." 49th IEEE conference on decision and control (CDC). IEEE, 2010.
+  // The original paper inputs moment commands, but for offboard control, angular rate commands are sent
+
+  Eigen::Vector4d ratecmd;
+  Eigen::Matrix3d rotmat;    // Rotation matrix of current attitude
+  Eigen::Matrix3d rotmat_d;  // Rotation matrix of desired attitude
+  Eigen::Vector3d error_att;
+
+  rotmat = quat2RotMatrix(curr_att);
+  rotmat_d = quat2RotMatrix(ref_att);
+
+  error_att = 0.5 * matrix_hat_inv(rotmat_d.transpose() * rotmat - rotmat.transpose() * rotmat_d);
+  ratecmd.head(3) = (2.0 / attctrl_tau_) * error_att;
+  rotmat = quat2RotMatrix(curr_att);
+  const Eigen::Vector3d zb = rotmat.col(2);
+  ratecmd(3) =
+      std::max(0.0, std::min(1.0, norm_thrust_const_ * ref_acc.dot(zb) + norm_thrust_offset_));  // Calculate thrust
+
+  return ratecmd;
+}
+
+Eigen::Vector3d pbtm_class::matrix_hat_inv(const Eigen::Matrix3d &m) {
+  Eigen::Vector3d v;
+  // TODO: Sanity checks if m is skew symmetric
+  v << m(7), m(2), m(3);
+  return v;
 }
