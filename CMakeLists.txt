@@ -11,6 +11,7 @@ find_package(catkin REQUIRED COMPONENTS
   mavros_msgs
   trajectory_msgs
   pcl_ros
+  controller_msgs
 )
 
 find_package(Eigen3 REQUIRED)
@@ -37,6 +38,9 @@ add_executable (${PROJECT_NAME}_node
   src/main.cpp
   src/pbtm.cpp
 )
+
+
 target_link_libraries(${PROJECT_NAME}_node 
   ${catkin_LIBRARIES}
 )
+
