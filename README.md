@@ -1,5 +1,8 @@
 # PX4 B-spline Trajectory Manager
 
+## Additional package for testing
+Add https://github.com/Jaeyoung-Lim/mavros_controllers/tree/master/controller_msgs into ws/src same directory as the pbtm package.
+
 ## Introduction
 `pbtm` serves as a mission manager for PX4 related systems using Mavros, it employs the use of `libbspline` package which creates Bspline trajectories for the agent. Running on 2 threads, one is handling the `drone_timer` and the other is for callbacks.
 

@@ -50,6 +50,8 @@
 #include <tf/tf.h>
 
 #include "bspline_utils.hpp"
+#include <controller_msgs/FlatTarget.h>
+
 
 #define KNRM  "\033[0m"
 #define KRED  "\033[31m"
@@ -120,9 +122,9 @@ class pbtm_class
         ros::NodeHandle _nh;
 
         /** @brief Subscribers **/
-        ros::Subscriber _pos_sub, _vel_sub, _waypoint_sub, _state_sub, _bypass_sub;
+        ros::Subscriber _pos_sub, _vel_sub, _waypoint_sub, _state_sub, _bypass_sub, _flat_ref_enu_sub;
         /** @brief Publishers **/
-        ros::Publisher _pose_nwu_pub, _local_pos_raw_pub, _log_path_pub, _bypass_target_pub, _att_rate_pub;
+        ros::Publisher _pose_nwu_pub, _local_pos_raw_pub, _log_path_pub, _bypass_target_pub, _att_rate_pub, _ref_enu_pub;
 
         /** @brief Timers **/
         ros::Timer _drone_timer;
@@ -161,7 +163,9 @@ class pbtm_class
         Eigen::Affine3d global_to_local_t, local_to_global_t;
 
         Eigen::Vector3d uav_local_vel_enu; // uav local velocity in ENU
+        Eigen::Vector3d uav_local_pos_enu; // uav local position in ENU
         Eigen::Vector3d uav_att_rate; // uav attitude rate
+        Eigen::Vector3d targetPos_, targetVel_, targetAcc_;
 
         // Control gains (position, velocity, drag)
         Eigen::Vector3d Kpos_, Kvel_, D_;
@@ -284,12 +288,22 @@ class pbtm_class
                 "/" + _id + "/mavros/local_position/pose", 20, &pbtm_class::pose_callback, this);
             /** @brief Subscriber that receives local velocity via mavros */
             _vel_sub = _nh.subscribe<geometry_msgs::TwistStamped>(
-                "/" + _id + "/mavros/local_position/velocity_local", 20, &pbtm_class::vel_callback, this);
+                "/" + _id + "/mavros/local_position/velocity_local", 1, &pbtm_class::vel_callback, this);
             /** @brief Subscriber that receives waypoint information from user */
             _waypoint_sub = _nh.subscribe<trajectory_msgs::JointTrajectory>(
                 "/trajectory/points", 20, &pbtm_class::waypoint_command_callback, this);
-            _bypass_sub = _nh.subscribe<mavros_msgs::PositionTarget>(
+_bypass_sub = _nh.subscribe<mavros_msgs::PositionTarget>(
                 "/" + _id + "/bypass", 20, &pbtm_class::bypass_callback, this);
+            // _flat_ref_enu_sub = _nh.subscribe("reference/flatsetpoint", 1, &pbtm_class::flattargetCallback, this,
+            //                         ros::TransportHints().tcpNoDelay());
+
+            _flat_ref_enu_sub = _nh.subscribe(
+                "/reference/flatsetpoint", 1, &pbtm_class::flattargetCallback, this);
+
+                
+            //   flatreferenceSub_ = nh_.subscribe("reference/flatsetpoint", 1, &geometricCtrl::flattargetCallback, this,
+            //                         ros::TransportHints().tcpNoDelay());
+            
 
             /* ------------ Publishers ------------ */
             /** @brief Publisher that publishes control raw setpoints via mavros */
@@ -307,6 +321,11 @@ class pbtm_class
             _att_rate_pub = _nh.advertise<mavros_msgs::AttitudeTarget>(
                 "/" + _id + "/mavros/setpoint_raw/attitude", 1, true
             );
+
+            _ref_enu_pub = _nh.advertise<mavros_msgs::PositionTarget>(
+                "/" + _id + "/cmd_enu", 1, true
+            );
+
 
 
             /* ------------ Timers ------------ */
@@ -372,6 +391,7 @@ class pbtm_class
         void waypoint_command_callback(const trajectory_msgs::JointTrajectory::ConstPtr &msg);
         void uavStateCallBack(const mavros_msgs::State::ConstPtr &msg);
         void bypass_callback(const mavros_msgs::PositionTarget::ConstPtr &msg);
+        void flattargetCallback(const controller_msgs::FlatTarget::ConstPtr &msg);
 
         /** @brief Used by controller*/
 

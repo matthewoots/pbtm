@@ -91,6 +91,7 @@ void pbtm_class::pose_callback(
 	std::lock_guard<std::mutex> pose_lock(pose_mutex);
 
 	_last_pose_time = ros::Time::now();
+	uav_local_pos_enu = point_to_vector(msg->pose.position);
    	
 	// local position in enu frame
 	current_transform_enu.translation() = Vector3d(
@@ -132,6 +133,14 @@ void pbtm_class::vel_callback(const geometry_msgs::TwistStampedConstPtr& msg)
 	uav_att_rate = ros_vector_to_vector(msg->twist.angular);
 }
 
+void pbtm_class::flattargetCallback(const controller_msgs::FlatTarget::ConstPtr &msg)
+{
+	targetPos_ = ros_vector_to_vector(msg->position);
+	targetVel_ = ros_vector_to_vector(msg->velocity);
+	targetAcc_ = ros_vector_to_vector(msg->acceleration);
+	std::cout << "flat target received" << std::endl;
+}
+
 /** 
 * @brief send_command via mavros to flight controller
 * Update pbtm_class::state_command cmd_nwu first and including cmd_nwu.q for yaw command
@@ -150,6 +159,14 @@ void pbtm_class::send_command()
 		enu_to_nwu().toRotationMatrix() * cmd_nwu.vel;
 	Eigen::Vector3d enu_cmd_acc =
 		enu_to_nwu().toRotationMatrix() * cmd_nwu.acc;
+
+	mavros_msgs::PositionTarget _cmd_enu;
+	_cmd_enu.header.stamp = ros::Time::now();
+	_cmd_enu.position = vector_to_point(enu_cmd_pose.translation());
+	_cmd_enu.velocity = vector_to_ros_vector(enu_cmd_vel);
+	_cmd_enu.acceleration_or_force = vector_to_ros_vector(enu_cmd_acc);
+
+	_ref_enu_pub.publish(_cmd_enu);
 
 	if (px4Ctrl)
 	{
@@ -185,27 +202,46 @@ void pbtm_class::send_command()
 	{
 		std::cout << "Geometric Controller\n";
 
-		// control position
+		// controlPosition
 		Eigen::Vector3d a_ref = enu_cmd_acc;
+		// targetAcc_ = Vector3d(0.0,0.0,0.0);
+		// targetVel_ = Vector3d(0.0,0.0,0.0);
+		// targetPos_ = Vector3d(0.0,0.0,10.0);
+		// Eigen::Vector3d a_ref = targetAcc_;
 
-		if(!using_yawTgt)
-		{
-			yaw_ref = getYawFromVel(uav_local_vel_enu);
-		}
+		// if(!using_yawTgt)
+		// {
+		// 	yaw_ref = getYawFromVel(uav_local_vel_enu);
+		// }
 
-		yaw_ref = 0;
+		// yaw_ref = (float)constrain_between_180(yaw_ref);
+
+		// yaw_ref = 0;
+
+		Eigen::Vector3d enu_cmd_euler = euler_rpy(enu_cmd_pose.linear());
+
+		double cmd_yaw = enu_cmd_euler.z();
+		yaw_ref = (float)constrain_between_180(cmd_yaw);
 		// reference attitude in quaternion
 		Eigen::Vector4d q_ref = acc2quaternion(a_ref - gravity_, yaw_ref);
 		Eigen::Matrix3d R_ref = quat2RotMatrix(q_ref);
 
 		Eigen::Vector3d pos_error = current_transform_enu.translation() - enu_cmd_pose.translation();
 		Eigen::Vector3d vel_error = uav_local_vel_enu - enu_cmd_vel;
+		// Eigen::Vector3d pos_error = current_transform_enu.translation() - targetPos_;
+		// Eigen::Vector3d vel_error = uav_local_vel_enu - targetVel_;
+
+		// Eigen::Vector3d pos_error = uav_local_pos_enu - targetPos_;
+		// Eigen::Vector3d vel_error = uav_local_vel_enu - targetVel_;
+
+		// std::cout << "pos cmd is " << enu_cmd_pose.translation() <<std::endl;
+		// std::cout << "vel cmd is " << enu_cmd_vel <<std::endl;
 
 		// Position Controller
 		Eigen::Vector3d a_fb = Kpos_.asDiagonal() * pos_error + Kvel_.asDiagonal() * vel_error; // feedforward term for trajectory error
 	  	if (a_fb.norm() > max_fb_acc_)
 			a_fb = (max_fb_acc_ / a_fb.norm()) * a_fb; // Clip acceleration if reference is too large
-
+		// std::cout << "a_fb is " << a_fb << std::endl;
 		// drag is omitted
 
 		// Reference acceleration
@@ -221,7 +257,7 @@ void pbtm_class::send_command()
   		msg.body_rate.x = cmdBodyRate_(0);
   		msg.body_rate.y = cmdBodyRate_(1);
   		msg.body_rate.z = cmdBodyRate_(2);
-  		msg.type_mask = 128;  // Ignore orientation messages
+  		msg.type_mask = 128;  // Ignore orientation messages (128); Ignore body rate messages (7)
   		msg.orientation.w = q_des(0);
   		msg.orientation.x = q_des(1);
   		msg.orientation.y = q_des(2);
