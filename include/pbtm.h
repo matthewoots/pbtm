@@ -45,6 +45,9 @@
 #include <trajectory_msgs/JointTrajectory.h>
 #include <trajectory_msgs/JointTrajectoryPoint.h>
 
+#include <dynamic_reconfigure/server.h>
+#include <pbtm/PbtmConfig.h>
+
 #include <visualization_msgs/Marker.h>
 
 #include <tf/tf.h>
@@ -392,6 +395,8 @@ _bypass_sub = _nh.subscribe<mavros_msgs::PositionTarget>(
         void uavStateCallBack(const mavros_msgs::State::ConstPtr &msg);
         void bypass_callback(const mavros_msgs::PositionTarget::ConstPtr &msg);
         void flattargetCallback(const controller_msgs::FlatTarget::ConstPtr &msg);
+
+        void dynamicReconfigureCallback(pbtm::PbtmConfig &config, uint32_t level);
 
         /** @brief Used by controller*/
 

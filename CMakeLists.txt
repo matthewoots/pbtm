@@ -12,9 +12,14 @@ find_package(catkin REQUIRED COMPONENTS
   trajectory_msgs
   pcl_ros
   controller_msgs
+  dynamic_reconfigure
 )
 
 find_package(Eigen3 REQUIRED)
+
+generate_dynamic_reconfigure_options(
+  cfg/pbtm.cfg
+)
 
 catkin_package(
   CATKIN_DEPENDS 

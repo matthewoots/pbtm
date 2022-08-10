@@ -24,7 +24,14 @@ int main (int argc, char** argv)
 {        
     ros::init (argc, argv, "pbtm_node");
     ros::NodeHandle nh("~");
-    pbtm_class pbtm_class(nh);
+    // pbtm_class pbtm_class(nh);
+
+    pbtm_class* pbtm = new pbtm_class(nh);
+
+    dynamic_reconfigure::Server<pbtm::PbtmConfig> srv;
+    dynamic_reconfigure::Server<pbtm::PbtmConfig>::CallbackType f;
+    f = boost::bind(&pbtm_class::dynamicReconfigureCallback, pbtm, _1, _2);
+    srv.setCallback(f);
     ros::MultiThreadedSpinner spinner(2);
     spinner.spin();
     return 0;

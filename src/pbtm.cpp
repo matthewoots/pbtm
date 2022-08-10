@@ -200,7 +200,7 @@ void pbtm_class::send_command()
 
 	else
 	{
-		std::cout << "Geometric Controller\n";
+		// std::cout << "Geometric Controller\n";
 
 		// controlPosition
 		Eigen::Vector3d a_ref = enu_cmd_acc;
@@ -257,7 +257,7 @@ void pbtm_class::send_command()
   		msg.body_rate.x = cmdBodyRate_(0);
   		msg.body_rate.y = cmdBodyRate_(1);
   		msg.body_rate.z = cmdBodyRate_(2);
-  		msg.type_mask = 128;  // Ignore orientation messages (128); Ignore body rate messages (7)
+  		msg.type_mask = 7;  // Ignore orientation messages (128); Ignore body rate messages (7)
   		msg.orientation.w = q_des(0);
   		msg.orientation.x = q_des(1);
   		msg.orientation.y = q_des(2);
@@ -761,6 +761,47 @@ void pbtm_class::visualize_log_path()
 
 	_log_path_pub.publish(path);
 
+}
+
+/** @brief  dynamic reconfigure callback*/
+void pbtm_class::dynamicReconfigureCallback(pbtm::PbtmConfig &config, uint32_t level)
+{
+	ROS_INFO("%sreconfiguration request received.%s\n", KBLU, KNRM);
+	// printf("%s[main.cpp] FCU connected! %s\n", KBLU, KNRM);
+	if (max_fb_acc_ != config.max_acc)
+	{
+		max_fb_acc_ = config.max_acc;
+		ROS_INFO("%sReconfigure request : max_acc = %.2f%s\n", KYEL,config.max_acc,KNRM);
+	}
+
+	else if (Kpos_x_ != config.Kpos_x_) {
+    Kpos_x_ = config.Kpos_x_;
+    ROS_INFO("%s Reconfigure request : Kpos_x_  = %.2f %s\n", KYEL, config.Kpos_x_, KNRM);
+  } else if (Kpos_y_ != config.Kpos_y_) {
+    Kpos_y_ = config.Kpos_y_;
+    ROS_INFO("Reconfigure request : Kpos_y_  = %.2f %s\n", KYEL, config.Kpos_y_, KNRM);
+  } else if (Kpos_z_ != config.Kpos_z_) {
+    Kpos_z_ = config.Kpos_z_;
+    ROS_INFO("%s Reconfigure request : Kpos_z_  = %.2f %s\n", KYEL, config.Kpos_z_, KNRM);
+  } else if (Kvel_x_ != config.Kvel_x_) {
+    Kvel_x_ = config.Kvel_x_;
+    ROS_INFO("%s Reconfigure request : Kvel_x_  = %.2f %s\n", KYEL, config.Kvel_x_, KNRM);
+  } else if (Kvel_y_ != config.Kvel_y_) {
+    Kvel_y_ = config.Kvel_y_;
+    ROS_INFO("%s Reconfigure request : Kvel_y_ =%.2f %s\n", KYEL, config.Kvel_y_, KNRM);
+  } else if (Kvel_z_ != config.Kvel_z_) {
+    Kvel_z_ = config.Kvel_z_;
+    ROS_INFO("%s Reconfigure request : Kvel_z_  = %.2f %s\n", KYEL, config.Kvel_z_, KNRM);
+  } else if (norm_thrust_const_ != config.norm_thrust_const_) {
+    norm_thrust_const_ = config.norm_thrust_const_;
+    ROS_INFO("%s Reconfigure request : norm_thrust_const_  = %.2f %s\n", KYEL, config.norm_thrust_const_, KNRM);
+  } else if (norm_thrust_offset_ != config.norm_thrust_offset_) {
+    norm_thrust_offset_ = config.norm_thrust_offset_;
+    ROS_INFO("%s Reconfigure request : norm_thrust_offset_  = %.2f %s\n", KYEL, config.norm_thrust_offset_, KNRM);
+  }
+
+  Kpos_ << -Kpos_x_, -Kpos_y_, -Kpos_z_;
+  Kvel_ << -Kvel_x_, -Kvel_y_, -Kvel_z_;
 }
 
 Eigen::Vector4d pbtm_class::acc2quaternion(const Eigen::Vector3d &vector_acc, const double &yaw)
