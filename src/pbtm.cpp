@@ -296,7 +296,16 @@ void pbtm_class::drone_timer(const ros::TimerEvent &)
 			}
 
 			if (update_get_command_by_time())
+			{
+				if(uav_task == kTakeOff)
+				{
+					// fix yaw as before takeoff
+					cmd_nwu.q = home_transformation.linear();
+				}
+				
 				send_command();
+			}
+
 			else
 			{
 				printf("[%sdrone%d%s pbtm.cpp] kHover/kIdle \n", 
