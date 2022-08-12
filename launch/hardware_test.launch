@@ -3,7 +3,7 @@
     <arg name="_uav_id" value="$(env UAV_GROUPNAME)" />
     <arg name="_uav_idx" value="$(env HOSTNAME)" />
     <arg name="_fcu_url" value="/dev/ttyAML0:230400" />
-    <arg name="_gcs_url" value="udp://@192.168.31.84" />
+    <arg name="_gcs_url" value="udp://@192.168.31.193" />
     <group ns="drone0">
 
         <node pkg="pbtm" type="pbtm_node" name="pbtm_node" output="screen">
@@ -23,12 +23,12 @@
             <param name="use_px4ctrl" value="false"/>
 
             <!-- for iris only -->
-            <param name="normalizedthrust_constant" value="0.06"/>
-            <param name="normalizedthrust_offset" value="0.0"/>
+            <param name="normalizedthrust_constant" value="0.02"/>
+            <param name="normalizedthrust_offset" value="0.01"/>
             <param name="attctrl_constant" value="0.3"/>
             <param name="gains/p_x" value = "1.0"/>
             <param name="gains/p_y" value = "1.0"/>
-            <param name="gains/p_z" value = "10.0"/>
+            <param name="gains/p_z" value = "1.0"/>
             <param name="gains/v_x" value = "1.0"/>
             <param name="gains/v_y" value = "1.0"/>
             <param name="gains/v_z" value = "1.0"/>
