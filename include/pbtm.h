@@ -145,7 +145,7 @@ class pbtm_class
         std::string _id;
         double _send_command_interval, _send_command_rate;
         double _timeout, _nwu_yaw_offset, last_yaw, _takeoff_height;
-        Eigen::Vector3d _start_global_nwu;
+        Eigen::Vector3d _start_global_nwu; // origin in the global frame
 
         /** @brief Bspline parameters **/
         int _knot_division, _knot_size;

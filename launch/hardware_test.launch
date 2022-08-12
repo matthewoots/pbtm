@@ -11,8 +11,11 @@
             <param name="send_command_rate" value="20" />
             <param name="timeout" value="0.5" />
             <param name="takeoff_height" value="1.3" />
+            <!-- start position of the drone w.r.t global origin -->
             <rosparam param="global_start_position">[1.0, 0.0, 0.0]</rosparam>
             <rosparam param="height_range">[1.0, 5.0]</rosparam>
+
+            <!-- heading of the drone w.r.t north -->
             <param name="yaw_offset_rad" value="0.0" />
             <param name="order" value="4" />
             <param name="max_velocity" value="2.0" />
