@@ -130,7 +130,8 @@ class pbtm_class
         /** Offboard enabled means that offboard control is active and also uav is armed **/
         bool _offboard_enabled = false;
         bool _setup = false, _state_check = false;
-        double takeoff_land_velocity = 0.3;
+        bool _set_takeoff_land_orientation;
+        double takeoff_land_velocity = 0.2;
         int uav_id, uav_task;
         std::string _id;
         double _send_command_interval, _send_command_rate;
@@ -141,6 +142,8 @@ class pbtm_class
         int _knot_division, _knot_size;
         double _order, _max_velocity;
         double _knot_interval, _duration;
+        Eigen::Quaterniond _takeoff_land_orientation;
+
         time_point<std::chrono::system_clock> stime; // start time for bspline server in time_t
         vector<double> timespan;
 

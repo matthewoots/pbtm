@@ -33,6 +33,13 @@ void pbtm_class::check_mavros_state()
 		return;
     }
 
+	if (!uav_current_state.armed)
+	{
+		printf("%s[main.cpp] uav disarmed %s\n", KRED, KNRM);
+		_offboard_enabled = false;
+		_setup = false;
+    }
+
     printf("%s[main.cpp] FCU connected! %s\n", KBLU, KNRM);
     _state_check = true;
 
@@ -297,11 +304,14 @@ void pbtm_class::drone_timer(const ros::TimerEvent &)
 
 			if (update_get_command_by_time())
 			{
-				if(uav_task == kTakeOff)
+				if(!_set_takeoff_land_orientation)
 				{
-					// fix yaw as before takeoff
-					cmd_nwu.q = home_transformation.linear();
+					_set_takeoff_land_orientation = true;
+					_takeoff_land_orientation = global_nwu_pose.linear();
 				}
+
+				// fix yaw as before takeoff or land
+				cmd_nwu.q = _takeoff_land_orientation;
 				
 				send_command();
 			}
@@ -321,6 +331,7 @@ void pbtm_class::drone_timer(const ros::TimerEvent &)
 
 				stop_and_hover();
 				_setup = false;
+				_set_takeoff_land_orientation = false;
 			}
 
 		}
@@ -330,6 +341,7 @@ void pbtm_class::drone_timer(const ros::TimerEvent &)
 			if (!_offboard_enabled)
 			{
 				printf("%s[pbtm.cpp] Vehicle has not taken off, please issue takeoff command first \n", KRED);
+				uav_task = kIdle;
 				break;
 			}
 
@@ -343,6 +355,7 @@ void pbtm_class::drone_timer(const ros::TimerEvent &)
 			if (!_offboard_enabled)
 			{
 				printf("%s[pbtm.cpp] Vehicle has not taken off, please issue takeoff command first \n", KRED);
+				uav_task = kIdle;
 				break;
 			}
 
@@ -484,8 +497,8 @@ int pbtm_class::joint_trajectory_to_waypoint(trajectory_msgs::JointTrajectory jt
 	else if (mission_type == 5)
 	{
 		wp_pos_vector.push_back(Eigen::Vector3d(
-			home_transformation.translation().x(),
-			home_transformation.translation().y(), 
+			global_nwu_pose.translation().x(),
+			global_nwu_pose.translation().y(), 
 			home_transformation.translation().z()));
 	}
 
@@ -525,7 +538,7 @@ bool pbtm_class::update_get_command_by_time()
 	
 	// If velocity is too low, then any noise will cause the yaw to fluctuate
 	// Restrict the yaw if velocity is too low
-	if (cmd_nwu.vel.norm() >= 0.05)
+	if (cmd_nwu.vel.norm() >= 0.15)
 		last_yaw = atan2(_norm_y,_norm_x);
 
 	cmd_nwu.q = 
