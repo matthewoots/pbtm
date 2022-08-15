@@ -1,48 +1,41 @@
 #!/usr/bin/env python3
 
+import sys
 import rospy
 from trajectory_msgs.msg import JointTrajectoryPoint
 from trajectory_msgs.msg import JointTrajectory
 from geometry_msgs.msg import Point
 
-pub0 = rospy.Publisher('/trajectory/points', JointTrajectory, queue_size=10)
+# launch this with
+# python send_target_land.py idx
 
-def land(num, point):
+def land(index, point):
     jt = JointTrajectory()
 
     jt.header.stamp = rospy.Time.now()
-    idx = str(num)
-    jt.joint_names.append('drone'+idx)
+    drone_name = 'drone'+str(index)
+    jt.joint_names.append(drone_name)
    
     jtp = JointTrajectoryPoint()
     jtp.positions.append(point.x)
     jtp.positions.append(point.y)
     jtp.positions.append(point.z)
+    # 5 is land
     jtp.time_from_start = rospy.Duration(5.0)
     jt.points.append(jtp)
 
     return jt
 
 def land_publisher():
-    rospy.init_node('land_publisher', anonymous=True)
-    rate_hz = 0.2
-    rate = rospy.Rate(rate_hz) # 0.2hz
-    start_sleep = rospy.Rate(0.5) # 0.5hz
-    drone_index = 0
+    rospy.init_node('takeoff_publisher'+sys.argv[1], anonymous=True)
+    pub = rospy.Publisher('/trajectory/points', JointTrajectory, latch=True, queue_size=20)
 
     point = Point()
 
+    start_sleep = rospy.Rate(0.5) # 0.5hz
     start_sleep.sleep()
-    count = 0
 
-    while not rospy.is_shutdown():
-        count = count + 1
-        if count > 1:
-            break
-
-        pub0.publish(land(drone_index, point))
-
-        rate.sleep()
+    pub.publish(land(int(sys.argv[1]), point))
     
     print('completed sending land')
 

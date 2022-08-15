@@ -314,7 +314,10 @@ void pbtm_class::drone_timer(const ros::TimerEvent &)
 				if (uav_task == kTakeOff)
 					uav_task = kHover;
 				else if (uav_task == kLand)
+				{
 					uav_task = kIdle;
+					_offboard_enabled = false;
+				}
 
 				stop_and_hover();
 				_setup = false;
