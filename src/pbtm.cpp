@@ -894,6 +894,7 @@ Eigen::Vector4d pbtm_class::geometric_attcontroller(const Eigen::Vector4d &ref_a
   const Eigen::Vector3d zb = rotmat.col(2);
   // norm_thrust_const_ is something related to battery, frame, motor , esc and mass.
   // And it act like "how much thrust we need to input if we ask for a unit acc(1m/s * s) .
+  // https://github.com/Jaeyoung-Lim/mavros_controllers/issues/156
   ratecmd(3) =
       std::max(0.0, std::min(1.0, norm_thrust_const_ * ref_acc.dot(zb) + norm_thrust_offset_));  // Calculate thrust
 
