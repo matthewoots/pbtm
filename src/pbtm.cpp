@@ -898,6 +898,28 @@ Eigen::Vector4d pbtm_class::geometric_attcontroller(const Eigen::Vector4d &ref_a
   ratecmd(3) =
       std::max(0.0, std::min(1.0, norm_thrust_const_ * ref_acc.dot(zb) + norm_thrust_offset_));  // Calculate thrust
 
+	  // ref_acc.dot(zb) * mass = thrust required from all 4 motor 
+	  // ref_acc.dot(zb) is referred as normalized_thrust in UZH RPG
+
+	  // we need to map this thrust to throttle command (0~1)
+
+	  // thrust/4 = k2*u^2 + k1*u + k0
+
+	  // use thrust stand to identify the quadratic relationship between throttle command and thrust (force in newton)
+
+	  // given k0, k1, k2, we can find out the throttle command, using Citardauq Formula
+	  // <-------UZH RPG------>
+	  //"Citardauq Formula: Gives a numerically stable solution of the quadratic equation for thrust_map_a ~ 0, which is not the case for the standard formula." from UZH RPG
+	  //const uint16_t cmd = 2.0 * (thrust_map_c_ - thrust_applied) / (-thrust_map_b_ - sqrt(thrust_map_b_ * thrust_map_b_ - 4.0 * thrust_map_a_ * (thrust_map_c_ - thrust_applied)));
+	  //thrust = thrust_map_a * u^2 + thrust_map_b * u + thrust_map_c
+	  // <-------UZH RPG------>
+
+	  // then we need to do voltge compensation for the throttle command.
+
+	  // thrust_cmd_compensated = (k_a * voltage + k_b) * thrust_cmd_nominal
+	  // this relationship can be obtained by hovering the drone at a fixed height and record the voltage and corresponding throttle value to maintain the height
+	  // => thrust_cmd_compensated/thrust_cmd_nominal = k_a * voltage + k_b
+
   return ratecmd;
 }
 
