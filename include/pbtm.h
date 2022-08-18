@@ -74,6 +74,7 @@ class pbtm_class
             kTakeOff,
             kHover,
             kMission,
+            kBypass,
             kHome,
             kLand
         };
@@ -87,6 +88,7 @@ class pbtm_class
                 case kTakeOff:   return "TAKEOFF";
                 case kHover: return "HOVER";
                 case kMission:   return "MISSION";
+                case kBypass:   return "BYPASS";
                 case kHome:   return "HOME";
                 case kLand: return "LAND";
                 default:      return "[Unknown Task]";
@@ -117,21 +119,22 @@ class pbtm_class
         ros::NodeHandle _nh;
 
         /** @brief Subscribers **/
-        ros::Subscriber _pos_sub, _waypoint_sub, _state_sub;
+        ros::Subscriber _pos_sub, _waypoint_sub, _state_sub, _bypass_sub;
         /** @brief Publishers **/
-        ros::Publisher _pose_nwu_pub, _local_pos_raw_pub, _log_path_pub;
+        ros::Publisher _pose_nwu_pub, _local_pos_raw_pub, _log_path_pub, _bypass_target_pub;
 
         /** @brief Timers **/
         ros::Timer _drone_timer;
 
         /** @brief Saving ros::Time information of various data **/
-        ros::Time _last_pose_time, _prev_command_time;
+        ros::Time _last_pose_time, _prev_bypass_time;
 
         /** Offboard enabled means that offboard control is active and also uav is armed **/
         bool _offboard_enabled = false;
-        bool _setup = false, _state_check = false;
+        bool _setup = false;
         bool _set_takeoff_land_orientation;
         double takeoff_land_velocity = 0.2;
+        double _bypass_timeout = 0.1;
         int uav_id, uav_task;
         std::string _id;
         double _send_command_interval, _send_command_rate;
@@ -233,7 +236,8 @@ class pbtm_class
             /** @brief Subscriber that receives waypoint information from user */
             _waypoint_sub = _nh.subscribe<trajectory_msgs::JointTrajectory>(
                 "/trajectory/points", 20, &pbtm_class::waypoint_command_callback, this);
-            
+            _bypass_sub = _nh.subscribe<mavros_msgs::PositionTarget>(
+                "/" + _id + "/bypass", 20, &pbtm_class::bypass_callback, this);
 
             /* ------------ Publishers ------------ */
             /** @brief Publisher that publishes control raw setpoints via mavros */
@@ -244,6 +248,8 @@ class pbtm_class
                 "/" + _id + "/uav/nwu", 20);
             _log_path_pub = _nh.advertise<nav_msgs::Path>(
                 "/" + _id + "/uav/log_path", 10, true);
+            _bypass_target_pub = _nh.advertise<geometry_msgs::PoseStamped>(
+                "/" + _id + "/goal", 10, true);
 
 
             /* ------------ Timers ------------ */
@@ -294,9 +300,6 @@ class pbtm_class
         /** @brief To get the command after the Bspline server has started **/
         bool update_get_command_by_time();
 
-        /** @brief Check the state of mavros (connection with FCU) **/
-        void check_mavros_state();
-
         /** @brief Set offboard mode (or tries to set it) **/
         void set_offboard();
 
@@ -310,6 +313,7 @@ class pbtm_class
         void pose_callback(const geometry_msgs::PoseStampedConstPtr& msg);
         void waypoint_command_callback(const trajectory_msgs::JointTrajectory::ConstPtr &msg);
         void uavStateCallBack(const mavros_msgs::State::ConstPtr &msg);
+        void bypass_callback(const mavros_msgs::PositionTarget::ConstPtr &msg);
 
         /** @brief common utility functions */
         int joint_trajectory_to_waypoint(trajectory_msgs::JointTrajectory jt);

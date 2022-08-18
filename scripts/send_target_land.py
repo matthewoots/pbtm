@@ -20,8 +20,8 @@ def land(index, point):
     jtp.positions.append(point.x)
     jtp.positions.append(point.y)
     jtp.positions.append(point.z)
-    # 5 is land
-    jtp.time_from_start = rospy.Duration(5.0)
+    # 6 is land
+    jtp.time_from_start = rospy.Duration(6.0)
     jt.points.append(jtp)
 
     return jt

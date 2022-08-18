@@ -21,13 +21,51 @@
 
 using namespace helper;
 
-void pbtm_class::check_mavros_state()
+/** @brief Get bypass message calculated from external path planning module */
+void pbtm_class::bypass_callback(
+	const mavros_msgs::PositionTarget::ConstPtr &msg)
 {
-    // Make Sure FCU is connected, wait for 5s if not connected.
-    printf("%s[main.cpp] FCU Connection is %s %s\n", 
-		uav_current_state.connected? KBLU : KRED, 
-		uav_current_state.connected? "up" : "down", KNRM);
-    if (!uav_current_state.connected)
+	_prev_bypass_time = ros::Time::now();
+	
+	mavros_msgs::PositionTarget bypass_msg = *msg;
+	time_point<std::chrono::system_clock> now_time = 
+		system_clock::now();
+	double rel_now_time = duration<double>(now_time - stime).count();
+	
+	cmd_nwu.pos = Eigen::Vector3d(
+		bypass_msg.position.x, bypass_msg.position.y, bypass_msg.position.z);
+	cmd_nwu.t = rel_now_time;
+	cmd_nwu.vel = Eigen::Vector3d(
+		bypass_msg.velocity.x, bypass_msg.velocity.y, bypass_msg.velocity.z);
+	double _norm = sqrt(pow(cmd_nwu.vel.x(),2) + pow(cmd_nwu.vel.y(),2));
+	double _norm_x = cmd_nwu.vel.x() / _norm;
+	double _norm_y = cmd_nwu.vel.y() / _norm;
+
+	cmd_nwu.acc = Eigen::Vector3d(
+		bypass_msg.acceleration_or_force.x, 
+		bypass_msg.acceleration_or_force.y, 
+		bypass_msg.acceleration_or_force.z);
+	
+	// If velocity is too low, then any noise will cause the yaw to fluctuate
+	// Restrict the yaw if velocity is too low
+	if (cmd_nwu.vel.norm() >= 0.15)
+		last_yaw = atan2(_norm_y,_norm_x);
+
+	cmd_nwu.q = 
+		calculate_quadcopter_orientation(cmd_nwu.acc, last_yaw);
+}
+
+
+/** @brief Get current uav FCU state */
+void pbtm_class::uavStateCallBack(
+	const mavros_msgs::State::ConstPtr &msg)
+{
+	uav_current_state = *msg;
+	// Make Sure FCU is connected, wait for 5s if not connected.
+    // printf("%s[main.cpp] FCU Connection is %s %s\n", 
+	// 	uav_current_state.connected? KBLU : KRED, 
+	// 	uav_current_state.connected? "up" : "down", KNRM);
+	if (!uav_current_state.connected)
 	{
 		printf("%s[main.cpp] Check for FCU connection %s\n", KRED, KNRM);
 		return;
@@ -35,24 +73,10 @@ void pbtm_class::check_mavros_state()
 
 	if (!uav_current_state.armed)
 	{
-		printf("%s[main.cpp] uav disarmed %s\n", KRED, KNRM);
-		_offboard_enabled = false;
-		_setup = false;
+		// printf("%s[main.cpp] uav disarmed %s\n", KRED, KNRM);
+		_offboard_enabled = _setup = false;
     }
 
-    printf("%s[main.cpp] FCU connected! %s\n", KBLU, KNRM);
-    _state_check = true;
-
-    return;
-}
-
-/** @brief Get current uav FCU state */
-void pbtm_class::uavStateCallBack(
-	const mavros_msgs::State::ConstPtr &msg)
-{
-	uav_current_state = *msg;
-	// Initialise state at the beginning
-	if (!_state_check) check_mavros_state();
 }
 
 /** @brief Get current uav pose */
@@ -181,8 +205,6 @@ void pbtm_class::set_offboard()
 
     ros::Rate rate(_send_command_rate);
     ros::Time last_request = ros::Time::now();
-
-    _prev_command_time = ros::Time::now();
 
     // *** Make sure takeoff is not immediately sent, this will help to stream the correct data to the program first
     // *** Will give a 1sec buffer ***
@@ -350,6 +372,43 @@ void pbtm_class::drone_timer(const ros::TimerEvent &)
 			break;
 		}
 
+		case kBypass:
+		{
+			if (!_offboard_enabled)
+			{
+				printf("%s[pbtm.cpp] Vehicle has not taken off, please issue takeoff command first \n", KRED);
+				uav_task = kIdle;
+				break;
+			}
+
+			if (!_setup)
+			{
+				path.poses.clear();
+
+				stime = std::chrono::system_clock::now();
+				_setup = true;
+
+				printf("[%sdrone%d%s pbtm.cpp] kBypass %sSetup Finished!%s \n", 
+					KGRN, uav_id, KNRM, KBLU, KNRM); 
+				visualize_log_path();
+			}
+
+			if (check_last_time(_bypass_timeout, _prev_bypass_time))
+				send_command();
+			else
+			{
+				printf("[%sdrone%d%s pbtm.cpp] Timeout for bypass \n", 
+					KGRN, uav_id, KNRM); 
+				printf("[%sdrone%d%s pbtm.cpp] kHover \n", 
+					KGRN, uav_id, KNRM); 
+				uav_task = kHover;
+				stop_and_hover();
+				_setup = false;
+			}
+
+			break;
+		}
+
 		case kMission: case kHome:
 		{
 			if (!_offboard_enabled)
@@ -455,7 +514,7 @@ int pbtm_class::joint_trajectory_to_waypoint(trajectory_msgs::JointTrajectory jt
 	int mission_type = (int)(jt.points[0].time_from_start.toSec());
 
 	// VehicleTask not within kIdle to kLand
-	if (mission_type > 5 || mission_type < 0)
+	if (mission_type > 6 || mission_type < 0)
 	{
 		printf("%sdrone%d%s invalid mission_type : %s%d%s! \n", 
 			KGRN, uav_id, KNRM, 
@@ -465,7 +524,15 @@ int pbtm_class::joint_trajectory_to_waypoint(trajectory_msgs::JointTrajectory jt
 
 	wp_pos_vector.clear();
 
-	if (mission_type == 3)
+	// VehicleTask enum list
+	// kIdle 0
+	// kTakeOff 1
+	// kHover 2
+	// kMission 3
+	// kBypass 4
+	// kHome 5
+	// kLand 6
+	if (mission_type == 3) // Mission
 	{
 		for (int i = 0; i < size_of_vector; i++)
 		{
@@ -480,21 +547,26 @@ int pbtm_class::joint_trajectory_to_waypoint(trajectory_msgs::JointTrajectory jt
 			wp_pos_vector.push_back(s.pos);
 		}
 	}
-	else if (mission_type == 1)
+	else if (mission_type == 1) // Takeoff
 	{
 		wp_pos_vector.push_back(Eigen::Vector3d(
 			global_nwu_pose.translation().x(),
 			global_nwu_pose.translation().y(), 
 			_takeoff_height));
 	}
-	else if (mission_type == 4)
+	if (mission_type == 4) // Bypass
+	{
+		// Publish to external path planning module
+
+	}
+	else if (mission_type == 5)
 	{
 		wp_pos_vector.push_back(Eigen::Vector3d(
 			home_transformation.translation().x(),
 			home_transformation.translation().y(), 
 			_takeoff_height));
 	}
-	else if (mission_type == 5)
+	else if (mission_type == 6)
 	{
 		wp_pos_vector.push_back(Eigen::Vector3d(
 			global_nwu_pose.translation().x(),

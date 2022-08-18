@@ -18,7 +18,7 @@ def home(num, point):
     jtp.positions.append(point.x)
     jtp.positions.append(point.y)
     jtp.positions.append(point.z)
-    jtp.time_from_start = rospy.Duration(4.0)
+    jtp.time_from_start = rospy.Duration(5.0)
     jt.points.append(jtp)
 
     return jt
