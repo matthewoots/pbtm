@@ -5,6 +5,9 @@ from trajectory_msgs.msg import JointTrajectoryPoint
 from trajectory_msgs.msg import JointTrajectory
 from geometry_msgs.msg import Point
 
+# launch this with
+# python send_target_home.py idx
+
 pub0 = rospy.Publisher('/trajectory/points', JointTrajectory, queue_size=10)
 
 def home(num, point):
@@ -18,6 +21,7 @@ def home(num, point):
     jtp.positions.append(point.x)
     jtp.positions.append(point.y)
     jtp.positions.append(point.z)
+    # 5 is for home
     jtp.time_from_start = rospy.Duration(5.0)
     jt.points.append(jtp)
 

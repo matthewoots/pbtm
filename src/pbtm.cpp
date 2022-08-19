@@ -557,7 +557,12 @@ int pbtm_class::joint_trajectory_to_waypoint(trajectory_msgs::JointTrajectory jt
 	if (mission_type == 4) // Bypass
 	{
 		// Publish to external path planning module
-
+		geometry_msgs::PoseStamped pose_msg;
+		pose_msg.header.stamp = ros::Time::now();
+		pose_msg.pose.position.x = jt.points[0].positions[0];
+		pose_msg.pose.position.y = jt.points[0].positions[1];
+		pose_msg.pose.position.z = jt.points[0].positions[2];
+		_bypass_target_pub.publish(pose_msg);
 	}
 	else if (mission_type == 5)
 	{
