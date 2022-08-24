@@ -127,14 +127,14 @@ class pbtm_class
         ros::Timer _drone_timer;
 
         /** @brief Saving ros::Time information of various data **/
-        ros::Time _last_pose_time, _prev_bypass_time;
+        ros::Time _last_pose_time, _prev_bypass_msg_time, bypass_timeout_start_time;
 
         /** Offboard enabled means that offboard control is active and also uav is armed **/
         bool _offboard_enabled = false;
         bool _setup = false;
         bool _set_takeoff_land_orientation;
-        double takeoff_land_velocity = 0.2;
-        double _bypass_timeout = 0.1;
+        double takeoff_land_velocity;
+        double _bypass_timeout;
         int uav_id, uav_task;
         std::string _id;
         double _send_command_interval, _send_command_rate;
@@ -193,6 +193,10 @@ class pbtm_class
             _nh.param<double>("order", _order, 1.0);
             _nh.param<double>("max_velocity", _max_velocity, 1.0);
             _nh.param<int>("knot_division", _knot_division, 1);
+
+            /** @brief Other parameters **/
+            _nh.param<double>("bypass_timeout", _bypass_timeout, 2.0);
+            _nh.param<double>("takeoff_land_velocity", takeoff_land_velocity, 0.2);
 
             _send_command_interval = 1 / _send_command_rate;
 

@@ -25,7 +25,12 @@ using namespace helper;
 void pbtm_class::bypass_callback(
 	const mavros_msgs::PositionTarget::ConstPtr &msg)
 {
-	_prev_bypass_time = ros::Time::now();
+	std::lock_guard<std::mutex> waypoint_lock(waypoint_command_mutex);
+
+	_prev_bypass_msg_time = ros::Time::now();
+
+	if (uav_task != kBypass)
+		return;
 	
 	mavros_msgs::PositionTarget bypass_msg = *msg;
 	time_point<std::chrono::system_clock> now_time = 
@@ -390,12 +395,24 @@ void pbtm_class::drone_timer(const ros::TimerEvent &)
 
 				printf("[%sdrone%d%s pbtm.cpp] kBypass %sSetup Finished!%s \n", 
 					KGRN, uav_id, KNRM, KBLU, KNRM); 
-				visualize_log_path();
+				
+				bypass_timeout_start_time = ros::Time::now();
 			}
 
-			if (check_last_time(_bypass_timeout, _prev_bypass_time))
+			// Check for messages, if too long we start a timer before moving back to hover mode
+
+			if (check_last_time(_bypass_timeout, _prev_bypass_msg_time))
+			{
+				bypass_timeout_start_time = ros::Time::now();
 				send_command();
+			}
 			else
+			{
+				// Send hover command / last command
+				send_command();
+			}
+
+			if (ros::Time::now() - bypass_timeout_start_time > ros::Duration(_bypass_timeout))
 			{
 				printf("[%sdrone%d%s pbtm.cpp] Timeout for bypass \n", 
 					KGRN, uav_id, KNRM); 
