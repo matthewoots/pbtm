@@ -41,6 +41,7 @@
 #include <mavros_msgs/PositionTarget.h>
 #include <mavros_msgs/State.h>
 #include <mavros_msgs/AttitudeTarget.h>
+#include <sensor_msgs/BatteryState.h>
 
 #include <trajectory_msgs/JointTrajectory.h>
 #include <trajectory_msgs/JointTrajectoryPoint.h>
@@ -125,7 +126,7 @@ class pbtm_class
         ros::NodeHandle _nh;
 
         /** @brief Subscribers **/
-        ros::Subscriber _pos_sub, _vel_sub, _waypoint_sub, _state_sub, _bypass_sub, _flat_ref_enu_sub;
+        ros::Subscriber _pos_sub, _vel_sub, _waypoint_sub, _state_sub, _bypass_sub, _flat_ref_enu_sub, _batt_sub;
         /** @brief Publishers **/
         ros::Publisher _pose_nwu_pub, _local_pos_raw_pub, _log_path_pub, _bypass_target_pub, _att_rate_pub, _ref_enu_pub;
 
@@ -170,18 +171,25 @@ class pbtm_class
         Eigen::Vector3d uav_att_rate; // uav attitude rate
         Eigen::Vector3d targetPos_, targetVel_, targetAcc_;
 
+
+        double battery_volt;
         // Control gains (position, velocity, drag)
         Eigen::Vector3d Kpos_, Kvel_, D_;
         Eigen::Vector3d gravity_;
         double Kpos_x_, Kpos_y_, Kpos_z_, Kvel_x_, Kvel_y_, Kvel_z_;
 
         bool px4Ctrl;
+        bool voltage_compensation_;
         bool using_yawTgt;
         double yaw_ref;
         double max_fb_acc_;
         double attctrl_tau_;
         double norm_thrust_offset_;
         double norm_thrust_const_;
+        double mass_; // mass of platform
+
+        double m_a_, m_b_, m_c_, volt_k_, volt_b_;
+
         Eigen::Vector4d q_des, uav_attitude_q;
         Eigen::Vector4d cmdBodyRate_;  //{wx, wy, wz, Thrust}
 
@@ -239,6 +247,16 @@ class pbtm_class
             _nh.param<double>("attctrl_constant", attctrl_tau_, 0.1);
             _nh.param<double>("normalizedthrust_offset", norm_thrust_offset_, 0.1);
             _nh.param<double>("normalizedthrust_constant", norm_thrust_const_, 0.05);
+            _nh.param<bool>("voltage_compensation", voltage_compensation_, false);
+
+            _nh.param<double>("m_a", m_a_, 202.33);
+            _nh.param<double>("m_b", m_b_, 145.56);
+            _nh.param<double>("m_c", m_c_, -8.0219);
+
+            _nh.param<double>("volt_k", volt_k_, -0.1088);
+            _nh.param<double>("volt_b", volt_b_, 2.1964);
+
+            _nh.param<double>("mass", mass_, 195.5);
 
             Kpos_ = Vector3d(-Kpos_x_, -Kpos_y_, -Kpos_z_);
             Kvel_ = Vector3d(-Kvel_x_, -Kvel_y_, -Kvel_z_);
@@ -302,6 +320,9 @@ _bypass_sub = _nh.subscribe<mavros_msgs::PositionTarget>(
 
             _flat_ref_enu_sub = _nh.subscribe(
                 "/reference/flatsetpoint", 1, &pbtm_class::flattargetCallback, this);
+
+            _batt_sub = _nh.subscribe(
+                "/" + _id + "/mavros/battery", 1, &pbtm_class::battery_callback, this);
 
                 
             //   flatreferenceSub_ = nh_.subscribe("reference/flatsetpoint", 1, &geometricCtrl::flattargetCallback, this,
@@ -395,6 +416,7 @@ _bypass_sub = _nh.subscribe<mavros_msgs::PositionTarget>(
         void uavStateCallBack(const mavros_msgs::State::ConstPtr &msg);
         void bypass_callback(const mavros_msgs::PositionTarget::ConstPtr &msg);
         void flattargetCallback(const controller_msgs::FlatTarget::ConstPtr &msg);
+        void battery_callback(const sensor_msgs::BatteryState::ConstPtr &msg);
 
         void dynamicReconfigureCallback(pbtm::PbtmConfig &config, uint32_t level);
 

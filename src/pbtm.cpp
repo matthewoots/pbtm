@@ -141,6 +141,11 @@ void pbtm_class::flattargetCallback(const controller_msgs::FlatTarget::ConstPtr 
 	std::cout << "flat target received" << std::endl;
 }
 
+void pbtm_class::battery_callback(const sensor_msgs::BatteryState::ConstPtr &msg)
+{
+	battery_volt = msg->voltage;
+}
+
 /** 
 * @brief send_command via mavros to flight controller
 * Update pbtm_class::state_command cmd_nwu first and including cmd_nwu.q for yaw command
@@ -895,8 +900,18 @@ Eigen::Vector4d pbtm_class::geometric_attcontroller(const Eigen::Vector4d &ref_a
   // norm_thrust_const_ is something related to battery, frame, motor , esc and mass.
   // And it act like "how much thrust we need to input if we ask for a unit acc(1m/s * s) .
   // https://github.com/Jaeyoung-Lim/mavros_controllers/issues/156
+  double acc_body = ref_acc.dot(zb);
+  double throttle = norm_thrust_const_ * acc_body + norm_thrust_offset_;
+
+  if (voltage_compensation_){
+	double force_gram_per_motor = acc_body * mass_ / 9.81 / 4; // convert to force in grams per motor
+	double cmd_theoretical = (-m_b_ + sqrt( pow(m_b_,2) - 4 * m_a_ * (m_c_ - force_gram_per_motor) )) / (2 * m_a_);
+	double ratio = battery_volt * volt_k_ + volt_b_;
+	throttle = (cmd_theoretical - 0.06) * ratio;
+  }
+
   ratecmd(3) =
-      std::max(0.0, std::min(1.0, norm_thrust_const_ * ref_acc.dot(zb) + norm_thrust_offset_));  // Calculate thrust
+      std::max(0.0, std::min(1.0, throttle));  // Limit throttle
 
 	  // ref_acc.dot(zb) * mass = thrust required from all 4 motor 
 	  // ref_acc.dot(zb) is referred as normalized_thrust in UZH RPG

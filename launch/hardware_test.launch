@@ -32,9 +32,24 @@
             <param name="gains/v_x" value = "1.0"/>
             <param name="gains/v_y" value = "1.0"/>
             <param name="gains/v_z" value = "1.0"/>
+            
+            <!-- F = m_a * u ^ 2 + m_b * u + c -->
+            <!-- u is the normalized pwm command (1000~2000 -> 0~1) -->
+            <!-- measured for 1404 at 11.1v -->
+            <param name="m_a" value = "202.33"/>
+            <param name="m_b" value = "145.56"/>
+            <param name="m_c" value = "-8.0219"/>
+
+            <!-- Ratio = actual_command/computed_command = volt_k * voltage + volt_b -->
+            <param name="volt_k" value = "-0.1088"/>
+            <param name="volt_b" value = "2.1964"/>
+
+            <!-- mass of vehicle in grams -->
+            <param name="mass" value="195.5"/>
 
             <param name="use_yawTarget" value = "false"/>
             <param name="max_acc" value = "10.0" />
+            <param name="voltage_compensation" value = "true"/>
         </node>
 
         <include file="$(find mavros)/launch/px4.launch">
