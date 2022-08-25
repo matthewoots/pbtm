@@ -15,6 +15,9 @@ find_package(catkin REQUIRED COMPONENTS
   dynamic_reconfigure
 )
 
+# Add offboard_controller_lib directory
+add_subdirectory(offboard_controller_lib)
+
 find_package(Eigen3 REQUIRED)
 
 generate_dynamic_reconfigure_options(
@@ -47,5 +50,6 @@ add_executable (${PROJECT_NAME}_node
 
 target_link_libraries(${PROJECT_NAME}_node 
   ${catkin_LIBRARIES}
+  offboard_controller_lib # link offboard_controller_lib
 )
 
