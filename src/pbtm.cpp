@@ -361,6 +361,7 @@ void pbtm_class::drone_timer(const ros::TimerEvent &)
 				_set_takeoff_land_orientation = false;
 			}
 
+			break;
 		}
 
 		case kHover:
@@ -467,7 +468,7 @@ void pbtm_class::drone_timer(const ros::TimerEvent &)
 			break;
 		}
 
-		default:
+		case kIdle: default:
 			break;
 		
 
