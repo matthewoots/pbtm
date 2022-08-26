@@ -3,7 +3,7 @@
     <arg name="_uav_id" value="$(env UAV_GROUPNAME)" />
     <arg name="_uav_idx" value="$(env HOSTNAME)" />
     <arg name="_fcu_url" value="/dev/ttyAML0:230400" />
-    <arg name="_gcs_url" value="udp://@192.168.31.193" />
+    <arg name="_gcs_url" value="udp://@192.168.31.194" /> <!-- zt laptop -->
     <group ns="drone0">
 
         <node pkg="pbtm" type="pbtm_node" name="pbtm_node" output="screen">
