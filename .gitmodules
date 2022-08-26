@@ -1,3 +1,6 @@
 [submodule "libbspline"]
 	path = libbspline
 	url = https://github.com/matthewoots/libbspline.git
+[submodule "offboard_controller_lib"]
+	path = offboard_controller_lib
+	url = https://github.com/mamariomiamo/offboard_controller_lib.git

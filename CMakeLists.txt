@@ -11,9 +11,17 @@ find_package(catkin REQUIRED COMPONENTS
   mavros_msgs
   trajectory_msgs
   pcl_ros
+  dynamic_reconfigure
 )
 
+# Add offboard_controller_lib directory
+add_subdirectory(offboard_controller_lib)
+
 find_package(Eigen3 REQUIRED)
+
+generate_dynamic_reconfigure_options(
+  cfg/pbtm.cfg
+)
 
 catkin_package(
   CATKIN_DEPENDS 
@@ -37,6 +45,10 @@ add_executable (${PROJECT_NAME}_node
   src/main.cpp
   src/pbtm.cpp
 )
+
+
 target_link_libraries(${PROJECT_NAME}_node 
   ${catkin_LIBRARIES}
+  offboard_controller_lib # link offboard_controller_lib
 )
+

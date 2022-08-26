@@ -91,6 +91,7 @@ void pbtm_class::pose_callback(
 	std::lock_guard<std::mutex> pose_lock(pose_mutex);
 
 	_last_pose_time = ros::Time::now();
+	uav_local_pos_enu = point_to_vector(msg->pose.position);
    	
 	// local position in enu frame
 	current_transform_enu.translation() = Vector3d(
@@ -104,6 +105,13 @@ void pbtm_class::pose_callback(
 		msg->pose.orientation.x,
 		msg->pose.orientation.y,
 		msg->pose.orientation.z).toRotationMatrix();
+	
+	uav_attitude_q = Vector4d(
+		msg->pose.orientation.w,
+		msg->pose.orientation.x,
+		msg->pose.orientation.y,
+		msg->pose.orientation.z
+	);
 
 	Eigen::Vector3d local_enu_euler = euler_rpy(current_transform_enu.linear());
 	
@@ -117,6 +125,17 @@ void pbtm_class::pose_callback(
 	global_nwu.pose.position = vector_to_point(global_nwu_pose.translation());
 	global_nwu.pose.orientation = quaternion_to_orientation(q_nwu);
 	_pose_nwu_pub.publish(global_nwu);
+}
+
+void pbtm_class::vel_callback(const geometry_msgs::TwistStampedConstPtr& msg)
+{
+	uav_local_vel_enu = ros_vector_to_vector(msg->twist.linear);
+	uav_att_rate = ros_vector_to_vector(msg->twist.angular);
+}
+
+void pbtm_class::battery_callback(const sensor_msgs::BatteryState::ConstPtr &msg)
+{
+	battery_volt = msg->voltage;
 }
 
 /** 
@@ -138,6 +157,16 @@ void pbtm_class::send_command()
 	Eigen::Vector3d enu_cmd_acc =
 		enu_to_nwu().toRotationMatrix() * cmd_nwu.acc;
 
+	mavros_msgs::PositionTarget _cmd_enu;
+	_cmd_enu.header.stamp = ros::Time::now();
+	_cmd_enu.position = vector_to_point(enu_cmd_pose.translation());
+	_cmd_enu.velocity = vector_to_ros_vector(enu_cmd_vel);
+	_cmd_enu.acceleration_or_force = vector_to_ros_vector(enu_cmd_acc);
+
+	_ref_enu_pub.publish(_cmd_enu);
+
+	if (px4Ctrl)
+	{
 	mavros_msgs::PositionTarget _cmd;
 
 	_cmd.header.stamp = ros::Time::now();
@@ -164,6 +193,43 @@ void pbtm_class::send_command()
 	// pos_sp.type_mask = 3072; // Ignore Yaw
 	// pos_sp.type_mask = 2048;
 	_local_pos_raw_pub.publish(_cmd);
+	}
+
+	else
+	{
+		Eigen::Vector3d a_ref = enu_cmd_acc;
+
+		Eigen::Vector3d enu_cmd_euler = euler_rpy(enu_cmd_pose.linear());
+
+		double cmd_yaw = enu_cmd_euler.z();
+		yaw_ref = (float)constrain_between_180(cmd_yaw);
+		// reference attitude in quaternion
+		Eigen::Vector4d q_ref = acc2quaternion(a_ref - gravity_, yaw_ref);
+		Eigen::Matrix3d R_ref = quat2RotMatrix(q_ref);
+
+		Eigen::Vector3d pos_error = current_transform_enu.translation() - enu_cmd_pose.translation();
+		Eigen::Vector3d vel_error = uav_local_vel_enu - enu_cmd_vel;
+
+		Eigen::Vector3d a_des = pos_ctrl->calDesiredAcceleration(pos_error, vel_error, a_ref);
+		q_des = pos_ctrl->calDesiredAttitude(a_des, yaw_ref);
+		cmdBodyRate_(3) = pos_ctrl->calDesiredThrottle(a_des, uav_attitude_q, battery_volt, voltage_compensation_);
+
+		mavros_msgs::AttitudeTarget msg;
+		msg.header.stamp = ros::Time::now();
+  		msg.header.frame_id = "map";
+  		msg.body_rate.x = cmdBodyRate_(0);
+  		msg.body_rate.y = cmdBodyRate_(1);
+  		msg.body_rate.z = cmdBodyRate_(2);
+  		msg.type_mask = 7;  // Ignore orientation messages (128); Ignore body rate messages (7)
+  		msg.orientation.w = q_des(0);
+  		msg.orientation.x = q_des(1);
+  		msg.orientation.y = q_des(2);
+  		msg.orientation.z = q_des(3);
+  		msg.thrust = cmdBodyRate_(3);
+		_att_rate_pub.publish(msg);
+	}
+
+
 
 }
 
@@ -658,4 +724,72 @@ void pbtm_class::visualize_log_path()
 
 	_log_path_pub.publish(path);
 
+}
+
+/** @brief  dynamic reconfigure callback*/
+void pbtm_class::dynamicReconfigureCallback(pbtm::PbtmConfig &config, uint32_t level)
+{
+	// ROS_INFO("%sreconfiguration request received.%s\n", KBLU, KNRM);
+	ROS_INFO("\033[40;37m reconfiguration request received. \033[0m\n");
+	// printf("%s[main.cpp] FCU connected! %s\n", KBLU, KNRM);
+	if (max_fb_acc_ != config.max_acc)
+	{
+		max_fb_acc_ = config.max_acc;
+		// ROS_INFO("%sReconfigure request : max_acc = %.2f %s\n", KYEL,config.max_acc,KNRM);
+		ROS_INFO("\033[40;37m Reconfigure request : max_acc = %.2f \033[0m\n", config.max_acc);
+	}
+
+	else if (Kpos_x_ != config.Kpos_x_) 
+	{
+    	Kpos_x_ = config.Kpos_x_;
+    	// ROS_INFO("%s Reconfigure request : Kpos_x_  = %.2f %s\n", KYEL, config.Kpos_x_, KNRM);
+		ROS_INFO("\033[40;37m Reconfigure request : Kpos_x_  = %.2f \033[0m\n", config.Kpos_x_);
+  	} 
+	
+	else if (Kpos_y_ != config.Kpos_y_) 
+	{
+    	Kpos_y_ = config.Kpos_y_;
+    	ROS_INFO("\033[40;37m Reconfigure request : Kpos_y_  = %.2f \033[0m\n", config.Kpos_y_);
+	} 
+	
+	else if (Kpos_z_ != config.Kpos_z_) 
+	{
+    	Kpos_z_ = config.Kpos_z_;
+    	ROS_INFO("\033[40;37m Reconfigure request : Kpos_z_  = %.2f \033[0m\n", config.Kpos_z_);
+	} 
+	
+	else if (Kvel_x_ != config.Kvel_x_) 
+	{
+    	Kvel_x_ = config.Kvel_x_;
+    	ROS_INFO("\033[40;37m Reconfigure request : Kvel_x_  = %.2f \033[0m\n", config.Kvel_x_);
+  	} 
+	
+	else if (Kvel_y_ != config.Kvel_y_) 
+	{
+    	Kvel_y_ = config.Kvel_y_;
+    	ROS_INFO("\033[40;37m Reconfigure request : Kvel_y_ =%.2f \033[0m\n", config.Kvel_y_);
+  	} 
+	
+	else if (Kvel_z_ != config.Kvel_z_) 
+	{
+    	Kvel_z_ = config.Kvel_z_;
+    	ROS_INFO("\033[40;37m Reconfigure request : Kvel_z_  = %.2f \033[0m\n", config.Kvel_z_);
+  	} 
+	
+	else if (norm_thrust_const_ != config.norm_thrust_const_) 
+	{
+    	norm_thrust_const_ = config.norm_thrust_const_;
+    	ROS_INFO("\033[40;37m Reconfigure request : norm_thrust_const_  = %.2f \033[0m\n", config.norm_thrust_const_);
+  	} 
+	
+	else if (norm_thrust_offset_ != config.norm_thrust_offset_) 
+	{
+    	norm_thrust_offset_ = config.norm_thrust_offset_;
+    	ROS_INFO("\033[40;37m Reconfigure request : norm_thrust_offset_  = %.2f \033[0m\n", config.norm_thrust_offset_);
+	}
+
+  	Kpos_ << -Kpos_x_, -Kpos_y_, -Kpos_z_;
+  	Kvel_ << -Kvel_x_, -Kvel_y_, -Kvel_z_;
+	pos_ctrl->setPosGains(Kpos_);
+	pos_ctrl->setVelGains(Kvel_);
 }
