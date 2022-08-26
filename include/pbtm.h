@@ -54,7 +54,6 @@
 #include <tf/tf.h>
 
 #include "bspline_utils.hpp"
-#include <controller_msgs/FlatTarget.h>
 #include "offb_ctrl.h"
 
 
@@ -324,20 +323,11 @@ class pbtm_class
             /** @brief Subscriber that receives waypoint information from user */
             _waypoint_sub = _nh.subscribe<trajectory_msgs::JointTrajectory>(
                 "/trajectory/points", 20, &pbtm_class::waypoint_command_callback, this);
-_bypass_sub = _nh.subscribe<mavros_msgs::PositionTarget>(
+            _bypass_sub = _nh.subscribe<mavros_msgs::PositionTarget>(
                 "/" + _id + "/bypass", 20, &pbtm_class::bypass_callback, this);
-            // _flat_ref_enu_sub = _nh.subscribe("reference/flatsetpoint", 1, &pbtm_class::flattargetCallback, this,
-            //                         ros::TransportHints().tcpNoDelay());
-
-            _flat_ref_enu_sub = _nh.subscribe(
-                "/reference/flatsetpoint", 1, &pbtm_class::flattargetCallback, this);
 
             _batt_sub = _nh.subscribe(
                 "/" + _id + "/mavros/battery", 1, &pbtm_class::battery_callback, this);
-
-                
-            //   flatreferenceSub_ = nh_.subscribe("reference/flatsetpoint", 1, &geometricCtrl::flattargetCallback, this,
-            //                         ros::TransportHints().tcpNoDelay());
             
 
             /* ------------ Publishers ------------ */
@@ -448,7 +438,6 @@ _bypass_sub = _nh.subscribe<mavros_msgs::PositionTarget>(
         void waypoint_command_callback(const trajectory_msgs::JointTrajectory::ConstPtr &msg);
         void uavStateCallBack(const mavros_msgs::State::ConstPtr &msg);
         void bypass_callback(const mavros_msgs::PositionTarget::ConstPtr &msg);
-        void flattargetCallback(const controller_msgs::FlatTarget::ConstPtr &msg);
         void battery_callback(const sensor_msgs::BatteryState::ConstPtr &msg);
 
         void dynamicReconfigureCallback(pbtm::PbtmConfig &config, uint32_t level);
@@ -456,19 +445,6 @@ _bypass_sub = _nh.subscribe<mavros_msgs::PositionTarget>(
         /** @brief Used by controller*/
 
         double getYawFromVel(const Eigen::Vector3d &vel) {return atan2(vel(1), vel(0));};
-        // defined in helper
-        Eigen::Vector4d acc2quaternion(const Eigen::Vector3d &vector_acc, const double &yaw);
-        Eigen::Vector4d rot2Quaternion(const Eigen::Matrix3d &R);
-        Eigen::Matrix3d quat2RotMatrix(const Eigen::Vector4d &q);
-
-        void computeBodyRateCmd(Eigen::Vector4d &bodyrate_cmd, const Eigen::Vector3d &a_des);
-
-        Eigen::Vector4d geometric_attcontroller(const Eigen::Vector4d &ref_att, const Eigen::Vector3d &ref_acc,
-                                                       Eigen::Vector4d &curr_att);
-
-        Eigen::Vector3d matrix_hat_inv(const Eigen::Matrix3d &m);
-
-
 
         /** @brief common utility functions */
         int joint_trajectory_to_waypoint(trajectory_msgs::JointTrajectory jt);

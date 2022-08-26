@@ -11,7 +11,6 @@ find_package(catkin REQUIRED COMPONENTS
   mavros_msgs
   trajectory_msgs
   pcl_ros
-  controller_msgs
   dynamic_reconfigure
 )
 

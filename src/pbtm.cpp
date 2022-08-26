@@ -133,14 +133,6 @@ void pbtm_class::vel_callback(const geometry_msgs::TwistStampedConstPtr& msg)
 	uav_att_rate = ros_vector_to_vector(msg->twist.angular);
 }
 
-void pbtm_class::flattargetCallback(const controller_msgs::FlatTarget::ConstPtr &msg)
-{
-	targetPos_ = ros_vector_to_vector(msg->position);
-	targetVel_ = ros_vector_to_vector(msg->velocity);
-	targetAcc_ = ros_vector_to_vector(msg->acceleration);
-	std::cout << "flat target received" << std::endl;
-}
-
 void pbtm_class::battery_callback(const sensor_msgs::BatteryState::ConstPtr &msg)
 {
 	battery_volt = msg->voltage;
@@ -205,23 +197,7 @@ void pbtm_class::send_command()
 
 	else
 	{
-		// std::cout << "Geometric Controller\n";
-
-		// controlPosition
 		Eigen::Vector3d a_ref = enu_cmd_acc;
-		// targetAcc_ = Vector3d(0.0,0.0,0.0);
-		// targetVel_ = Vector3d(0.0,0.0,0.0);
-		// targetPos_ = Vector3d(0.0,0.0,10.0);
-		// Eigen::Vector3d a_ref = targetAcc_;
-
-		// if(!using_yawTgt)
-		// {
-		// 	yaw_ref = getYawFromVel(uav_local_vel_enu);
-		// }
-
-		// yaw_ref = (float)constrain_between_180(yaw_ref);
-
-		// yaw_ref = 0;
 
 		Eigen::Vector3d enu_cmd_euler = euler_rpy(enu_cmd_pose.linear());
 
@@ -233,42 +209,11 @@ void pbtm_class::send_command()
 
 		Eigen::Vector3d pos_error = current_transform_enu.translation() - enu_cmd_pose.translation();
 		Eigen::Vector3d vel_error = uav_local_vel_enu - enu_cmd_vel;
-		// Eigen::Vector3d pos_error = current_transform_enu.translation() - targetPos_;
-		// Eigen::Vector3d vel_error = uav_local_vel_enu - targetVel_;
-
-		// Eigen::Vector3d pos_error = uav_local_pos_enu - targetPos_;
-		// Eigen::Vector3d vel_error = uav_local_vel_enu - targetVel_;
-
-		// std::cout << "pos cmd is " << enu_cmd_pose.translation() <<std::endl;
-		// std::cout << "vel cmd is " << enu_cmd_vel <<std::endl;
-
-		// Position Controller
-		// Eigen::Vector3d a_fb = Kpos_.asDiagonal() * pos_error + Kvel_.asDiagonal() * vel_error; // feedforward term for trajectory error
-	  	// if (a_fb.norm() > max_fb_acc_)
-		// 	a_fb = (max_fb_acc_ / a_fb.norm()) * a_fb; // Clip acceleration if reference is too large
-		// // std::cout << "a_fb is " << a_fb << std::endl;
-		// // drag is omitted
-
-		// // Reference acceleration
-  		// Eigen::Vector3d a_des = a_fb + a_ref - gravity_;
 
 		Eigen::Vector3d a_des = pos_ctrl->calDesiredAcceleration(pos_error, vel_error, a_ref);
 		q_des = pos_ctrl->calDesiredAttitude(a_des, yaw_ref);
 		cmdBodyRate_(3) = pos_ctrl->calDesiredThrottle(a_des, uav_attitude_q, battery_volt, voltage_compensation_);
 
-
-		// sanity check, same as test.cpp from offboard_controller_lib
-		// a_des = pos_ctrl->calDesiredAcceleration(Eigen::Vector3d(0.0, 0.0, 0.0), Eigen::Vector3d(0.0, 0.0, 0.0), Eigen::Vector3d(0.0, 0.0, 0.0));
-		// // std::cout << "a_des is " << a_des << std::endl;
-		// q_des = pos_ctrl->calDesiredAttitude(a_des, 0.0);
-		// cmdBodyRate_(3) = pos_ctrl->calDesiredThrottle(a_des, Eigen::Vector4d(0.0,0.0,0.0,-1), 11.1, true);
-
-		// std::cout << "throttle is " << cmdBodyRate_(3) << std::endl;
-
-		// compute bodyrate command
-		
-		// computeBodyRateCmd(cmdBodyRate_, a_des); // reference body rate is stored in cmdBodyRate_
-												 // reference attitude is stored in q_des
 		mavros_msgs::AttitudeTarget msg;
 		msg.header.stamp = ros::Time::now();
   		msg.header.frame_id = "map";
@@ -847,140 +792,4 @@ void pbtm_class::dynamicReconfigureCallback(pbtm::PbtmConfig &config, uint32_t l
   	Kvel_ << -Kvel_x_, -Kvel_y_, -Kvel_z_;
 	pos_ctrl->setPosGains(Kpos_);
 	pos_ctrl->setVelGains(Kvel_);
-}
-
-Eigen::Vector4d pbtm_class::acc2quaternion(const Eigen::Vector3d &vector_acc, const double &yaw)
-{
-//   Eigen::Quaterniond quat;
-  Eigen::Vector4d quat;
-  Eigen::Vector3d zb_des, yb_des, xb_des, proj_xb_des;
-  Eigen::Matrix3d rotmat;
-
-  proj_xb_des << std::cos(yaw), std::sin(yaw), 0.0;
-
-  zb_des = vector_acc / vector_acc.norm();
-  yb_des = zb_des.cross(proj_xb_des) / (zb_des.cross(proj_xb_des)).norm();
-  xb_des = yb_des.cross(zb_des) / (yb_des.cross(zb_des)).norm();
-
-  rotmat << xb_des(0), yb_des(0), zb_des(0), xb_des(1), yb_des(1), zb_des(1), xb_des(2), yb_des(2), zb_des(2);
-//   quat = rotmat;
-  quat = rot2Quaternion(rotmat);
-  return quat;
-}
-
-Eigen::Vector4d pbtm_class::rot2Quaternion(const Eigen::Matrix3d &R) {
-  Eigen::Vector4d quat;
-  double tr = R.trace();
-  if (tr > 0.0) {
-    double S = sqrt(tr + 1.0) * 2.0;  // S=4*qw
-    quat(0) = 0.25 * S;
-    quat(1) = (R(2, 1) - R(1, 2)) / S;
-    quat(2) = (R(0, 2) - R(2, 0)) / S;
-    quat(3) = (R(1, 0) - R(0, 1)) / S;
-  } else if ((R(0, 0) > R(1, 1)) & (R(0, 0) > R(2, 2))) {
-    double S = sqrt(1.0 + R(0, 0) - R(1, 1) - R(2, 2)) * 2.0;  // S=4*qx
-    quat(0) = (R(2, 1) - R(1, 2)) / S;
-    quat(1) = 0.25 * S;
-    quat(2) = (R(0, 1) + R(1, 0)) / S;
-    quat(3) = (R(0, 2) + R(2, 0)) / S;
-  } else if (R(1, 1) > R(2, 2)) {
-    double S = sqrt(1.0 + R(1, 1) - R(0, 0) - R(2, 2)) * 2.0;  // S=4*qy
-    quat(0) = (R(0, 2) - R(2, 0)) / S;
-    quat(1) = (R(0, 1) + R(1, 0)) / S;
-    quat(2) = 0.25 * S;
-    quat(3) = (R(1, 2) + R(2, 1)) / S;
-  } else {
-    double S = sqrt(1.0 + R(2, 2) - R(0, 0) - R(1, 1)) * 2.0;  // S=4*qz
-    quat(0) = (R(1, 0) - R(0, 1)) / S;
-    quat(1) = (R(0, 2) + R(2, 0)) / S;
-    quat(2) = (R(1, 2) + R(2, 1)) / S;
-    quat(3) = 0.25 * S;
-  }
-  return quat;
-}
-
-Eigen::Matrix3d pbtm_class::quat2RotMatrix(const Eigen::Vector4d &q) {
-  Eigen::Matrix3d rotmat;
-  rotmat << q(0) * q(0) + q(1) * q(1) - q(2) * q(2) - q(3) * q(3), 2 * q(1) * q(2) - 2 * q(0) * q(3),
-      2 * q(0) * q(2) + 2 * q(1) * q(3),
-
-      2 * q(0) * q(3) + 2 * q(1) * q(2), q(0) * q(0) - q(1) * q(1) + q(2) * q(2) - q(3) * q(3),
-      2 * q(2) * q(3) - 2 * q(0) * q(1),
-
-      2 * q(1) * q(3) - 2 * q(0) * q(2), 2 * q(0) * q(1) + 2 * q(2) * q(3),
-      q(0) * q(0) - q(1) * q(1) - q(2) * q(2) + q(3) * q(3);
-  return rotmat;
-}
-
-void pbtm_class::computeBodyRateCmd(Eigen::Vector4d &bodyrate_cmd, const Eigen::Vector3d &a_des)
-{
-	q_des = acc2quaternion(a_des, yaw_ref);
-	bodyrate_cmd = geometric_attcontroller(q_des, a_des, uav_attitude_q);
-}
-
-Eigen::Vector4d pbtm_class::geometric_attcontroller(const Eigen::Vector4d &ref_att, const Eigen::Vector3d &ref_acc,
-                                                       Eigen::Vector4d &curr_att) {
-  // Geometric attitude controller
-  // Attitude error is defined as in Lee, Taeyoung, Melvin Leok, and N. Harris McClamroch. "Geometric tracking control
-  // of a quadrotor UAV on SE (3)." 49th IEEE conference on decision and control (CDC). IEEE, 2010.
-  // The original paper inputs moment commands, but for offboard control, angular rate commands are sent
-
-  Eigen::Vector4d ratecmd;
-  Eigen::Matrix3d rotmat;    // Rotation matrix of current attitude
-  Eigen::Matrix3d rotmat_d;  // Rotation matrix of desired attitude
-  Eigen::Vector3d error_att;
-
-  rotmat = quat2RotMatrix(curr_att);
-  rotmat_d = quat2RotMatrix(ref_att);
-
-  error_att = 0.5 * matrix_hat_inv(rotmat_d.transpose() * rotmat - rotmat.transpose() * rotmat_d);
-  ratecmd.head(3) = (2.0 / attctrl_tau_) * error_att;
-  rotmat = quat2RotMatrix(curr_att);
-  const Eigen::Vector3d zb = rotmat.col(2);
-  // norm_thrust_const_ is something related to battery, frame, motor , esc and mass.
-  // And it act like "how much thrust we need to input if we ask for a unit acc(1m/s * s) .
-  // https://github.com/Jaeyoung-Lim/mavros_controllers/issues/156
-  double acc_body = ref_acc.dot(zb);
-  double throttle = norm_thrust_const_ * acc_body + norm_thrust_offset_;
-
-  if (voltage_compensation_){
-	double force_gram_per_motor = acc_body * mass_ / 9.81 / 4; // convert to force in grams per motor
-	double cmd_theoretical = (-m_b_ + sqrt( pow(m_b_,2) - 4 * m_a_ * (m_c_ - force_gram_per_motor) )) / (2 * m_a_);
-	double ratio = battery_volt * volt_k_ + volt_b_;
-	throttle = (cmd_theoretical - 0.06) * ratio;
-  }
-
-  ratecmd(3) =
-      std::max(0.0, std::min(1.0, throttle));  // Limit throttle
-
-	  // ref_acc.dot(zb) * mass = thrust required from all 4 motor 
-	  // ref_acc.dot(zb) is referred as normalized_thrust in UZH RPG
-
-	  // we need to map this thrust to throttle command (0~1)
-
-	  // thrust/4 = k2*u^2 + k1*u + k0
-
-	  // use thrust stand to identify the quadratic relationship between throttle command and thrust (force in newton)
-
-	  // given k0, k1, k2, we can find out the throttle command, using Citardauq Formula
-	  // <-------UZH RPG------>
-	  //"Citardauq Formula: Gives a numerically stable solution of the quadratic equation for thrust_map_a ~ 0, which is not the case for the standard formula." from UZH RPG
-	  //const uint16_t cmd = 2.0 * (thrust_map_c_ - thrust_applied) / (-thrust_map_b_ - sqrt(thrust_map_b_ * thrust_map_b_ - 4.0 * thrust_map_a_ * (thrust_map_c_ - thrust_applied)));
-	  //thrust = thrust_map_a * u^2 + thrust_map_b * u + thrust_map_c
-	  // <-------UZH RPG------>
-
-	  // then we need to do voltge compensation for the throttle command.
-
-	  // thrust_cmd_compensated = (k_a * voltage + k_b) * thrust_cmd_nominal
-	  // this relationship can be obtained by hovering the drone at a fixed height and record the voltage and corresponding throttle value to maintain the height
-	  // => thrust_cmd_compensated/thrust_cmd_nominal = k_a * voltage + k_b
-
-  return ratecmd;
-}
-
-Eigen::Vector3d pbtm_class::matrix_hat_inv(const Eigen::Matrix3d &m) {
-  Eigen::Vector3d v;
-  // TODO: Sanity checks if m is skew symmetric
-  v << m(7), m(2), m(3);
-  return v;
 }
