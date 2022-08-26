@@ -243,18 +243,31 @@ void pbtm_class::send_command()
 		// std::cout << "vel cmd is " << enu_cmd_vel <<std::endl;
 
 		// Position Controller
-		Eigen::Vector3d a_fb = Kpos_.asDiagonal() * pos_error + Kvel_.asDiagonal() * vel_error; // feedforward term for trajectory error
-	  	if (a_fb.norm() > max_fb_acc_)
-			a_fb = (max_fb_acc_ / a_fb.norm()) * a_fb; // Clip acceleration if reference is too large
-		// std::cout << "a_fb is " << a_fb << std::endl;
-		// drag is omitted
+		// Eigen::Vector3d a_fb = Kpos_.asDiagonal() * pos_error + Kvel_.asDiagonal() * vel_error; // feedforward term for trajectory error
+	  	// if (a_fb.norm() > max_fb_acc_)
+		// 	a_fb = (max_fb_acc_ / a_fb.norm()) * a_fb; // Clip acceleration if reference is too large
+		// // std::cout << "a_fb is " << a_fb << std::endl;
+		// // drag is omitted
 
-		// Reference acceleration
-  		Eigen::Vector3d a_des = a_fb + a_ref - gravity_;
+		// // Reference acceleration
+  		// Eigen::Vector3d a_des = a_fb + a_ref - gravity_;
+
+		Eigen::Vector3d a_des = pos_ctrl->calDesiredAcceleration(pos_error, vel_error, a_ref);
+		q_des = pos_ctrl->calDesiredAttitude(a_des, yaw_ref);
+		cmdBodyRate_(3) = pos_ctrl->calDesiredThrottle(a_des, uav_attitude_q, battery_volt, voltage_compensation_);
+
+
+		// sanity check, same as test.cpp from offboard_controller_lib
+		// a_des = pos_ctrl->calDesiredAcceleration(Eigen::Vector3d(0.0, 0.0, 0.0), Eigen::Vector3d(0.0, 0.0, 0.0), Eigen::Vector3d(0.0, 0.0, 0.0));
+		// // std::cout << "a_des is " << a_des << std::endl;
+		// q_des = pos_ctrl->calDesiredAttitude(a_des, 0.0);
+		// cmdBodyRate_(3) = pos_ctrl->calDesiredThrottle(a_des, Eigen::Vector4d(0.0,0.0,0.0,-1), 11.1, true);
+
+		// std::cout << "throttle is " << cmdBodyRate_(3) << std::endl;
 
 		// compute bodyrate command
 		
-		computeBodyRateCmd(cmdBodyRate_, a_des); // reference body rate is stored in cmdBodyRate_
+		// computeBodyRateCmd(cmdBodyRate_, a_des); // reference body rate is stored in cmdBodyRate_
 												 // reference attitude is stored in q_des
 		mavros_msgs::AttitudeTarget msg;
 		msg.header.stamp = ros::Time::now();
@@ -771,42 +784,69 @@ void pbtm_class::visualize_log_path()
 /** @brief  dynamic reconfigure callback*/
 void pbtm_class::dynamicReconfigureCallback(pbtm::PbtmConfig &config, uint32_t level)
 {
-	ROS_INFO("%sreconfiguration request received.%s\n", KBLU, KNRM);
+	// ROS_INFO("%sreconfiguration request received.%s\n", KBLU, KNRM);
+	ROS_INFO("\033[40;37m reconfiguration request received. \033[0m\n");
 	// printf("%s[main.cpp] FCU connected! %s\n", KBLU, KNRM);
 	if (max_fb_acc_ != config.max_acc)
 	{
 		max_fb_acc_ = config.max_acc;
-		ROS_INFO("%sReconfigure request : max_acc = %.2f%s\n", KYEL,config.max_acc,KNRM);
+		// ROS_INFO("%sReconfigure request : max_acc = %.2f %s\n", KYEL,config.max_acc,KNRM);
+		ROS_INFO("\033[40;37m Reconfigure request : max_acc = %.2f \033[0m\n", config.max_acc);
 	}
 
-	else if (Kpos_x_ != config.Kpos_x_) {
-    Kpos_x_ = config.Kpos_x_;
-    ROS_INFO("%s Reconfigure request : Kpos_x_  = %.2f %s\n", KYEL, config.Kpos_x_, KNRM);
-  } else if (Kpos_y_ != config.Kpos_y_) {
-    Kpos_y_ = config.Kpos_y_;
-    ROS_INFO("Reconfigure request : Kpos_y_  = %.2f %s\n", KYEL, config.Kpos_y_, KNRM);
-  } else if (Kpos_z_ != config.Kpos_z_) {
-    Kpos_z_ = config.Kpos_z_;
-    ROS_INFO("%s Reconfigure request : Kpos_z_  = %.2f %s\n", KYEL, config.Kpos_z_, KNRM);
-  } else if (Kvel_x_ != config.Kvel_x_) {
-    Kvel_x_ = config.Kvel_x_;
-    ROS_INFO("%s Reconfigure request : Kvel_x_  = %.2f %s\n", KYEL, config.Kvel_x_, KNRM);
-  } else if (Kvel_y_ != config.Kvel_y_) {
-    Kvel_y_ = config.Kvel_y_;
-    ROS_INFO("%s Reconfigure request : Kvel_y_ =%.2f %s\n", KYEL, config.Kvel_y_, KNRM);
-  } else if (Kvel_z_ != config.Kvel_z_) {
-    Kvel_z_ = config.Kvel_z_;
-    ROS_INFO("%s Reconfigure request : Kvel_z_  = %.2f %s\n", KYEL, config.Kvel_z_, KNRM);
-  } else if (norm_thrust_const_ != config.norm_thrust_const_) {
-    norm_thrust_const_ = config.norm_thrust_const_;
-    ROS_INFO("%s Reconfigure request : norm_thrust_const_  = %.2f %s\n", KYEL, config.norm_thrust_const_, KNRM);
-  } else if (norm_thrust_offset_ != config.norm_thrust_offset_) {
-    norm_thrust_offset_ = config.norm_thrust_offset_;
-    ROS_INFO("%s Reconfigure request : norm_thrust_offset_  = %.2f %s\n", KYEL, config.norm_thrust_offset_, KNRM);
-  }
+	else if (Kpos_x_ != config.Kpos_x_) 
+	{
+    	Kpos_x_ = config.Kpos_x_;
+    	// ROS_INFO("%s Reconfigure request : Kpos_x_  = %.2f %s\n", KYEL, config.Kpos_x_, KNRM);
+		ROS_INFO("\033[40;37m Reconfigure request : Kpos_x_  = %.2f \033[0m\n", config.Kpos_x_);
+  	} 
+	
+	else if (Kpos_y_ != config.Kpos_y_) 
+	{
+    	Kpos_y_ = config.Kpos_y_;
+    	ROS_INFO("\033[40;37m Reconfigure request : Kpos_y_  = %.2f \033[0m\n", config.Kpos_y_);
+	} 
+	
+	else if (Kpos_z_ != config.Kpos_z_) 
+	{
+    	Kpos_z_ = config.Kpos_z_;
+    	ROS_INFO("\033[40;37m Reconfigure request : Kpos_z_  = %.2f \033[0m\n", config.Kpos_z_);
+	} 
+	
+	else if (Kvel_x_ != config.Kvel_x_) 
+	{
+    	Kvel_x_ = config.Kvel_x_;
+    	ROS_INFO("\033[40;37m Reconfigure request : Kvel_x_  = %.2f \033[0m\n", config.Kvel_x_);
+  	} 
+	
+	else if (Kvel_y_ != config.Kvel_y_) 
+	{
+    	Kvel_y_ = config.Kvel_y_;
+    	ROS_INFO("\033[40;37m Reconfigure request : Kvel_y_ =%.2f \033[0m\n", config.Kvel_y_);
+  	} 
+	
+	else if (Kvel_z_ != config.Kvel_z_) 
+	{
+    	Kvel_z_ = config.Kvel_z_;
+    	ROS_INFO("\033[40;37m Reconfigure request : Kvel_z_  = %.2f \033[0m\n", config.Kvel_z_);
+  	} 
+	
+	else if (norm_thrust_const_ != config.norm_thrust_const_) 
+	{
+    	norm_thrust_const_ = config.norm_thrust_const_;
+    	ROS_INFO("\033[40;37m Reconfigure request : norm_thrust_const_  = %.2f \033[0m\n", config.norm_thrust_const_);
+  	} 
+	
+	else if (norm_thrust_offset_ != config.norm_thrust_offset_) 
+	{
+    	norm_thrust_offset_ = config.norm_thrust_offset_;
+    	ROS_INFO("\033[40;37m Reconfigure request : norm_thrust_offset_  = %.2f \033[0m\n", config.norm_thrust_offset_);
+	}
 
-  Kpos_ << -Kpos_x_, -Kpos_y_, -Kpos_z_;
-  Kvel_ << -Kvel_x_, -Kvel_y_, -Kvel_z_;
+  	Kpos_ << -Kpos_x_, -Kpos_y_, -Kpos_z_;
+  	Kvel_ << -Kvel_x_, -Kvel_y_, -Kvel_z_;
+	pos_ctrl->setPosGains(Kpos_);
+	pos_ctrl->setVelGains(Kvel_);
 }
 
 Eigen::Vector4d pbtm_class::acc2quaternion(const Eigen::Vector3d &vector_acc, const double &yaw)

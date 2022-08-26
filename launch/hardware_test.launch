@@ -44,6 +44,9 @@
             <param name="volt_k" value = "-0.1088"/>
             <param name="volt_b" value = "2.1964"/>
 
+            <param name="throttle_offset" value = "0.06"/>
+            <param name="throttle_limit" value = "1"/>
+
             <!-- mass of vehicle in grams -->
             <param name="mass" value="195.5"/>
 

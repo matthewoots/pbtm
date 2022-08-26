@@ -55,6 +55,7 @@
 
 #include "bspline_utils.hpp"
 #include <controller_msgs/FlatTarget.h>
+#include "offb_ctrl.h"
 
 
 #define KNRM  "\033[0m"
@@ -116,6 +117,7 @@ class pbtm_class
         /** @brief classes from libbspline packages (functions) that are used in this package **/
         bspline_trajectory bsu;
         common_trajectory_tool ctt;
+        offboard_controller::OffbCtrl* pos_ctrl = nullptr;
 
         /** @brief Service clients **/
         ros::ServiceClient arming_client, set_mode_client; 
@@ -177,6 +179,7 @@ class pbtm_class
         Eigen::Vector3d Kpos_, Kvel_, D_;
         Eigen::Vector3d gravity_;
         double Kpos_x_, Kpos_y_, Kpos_z_, Kvel_x_, Kvel_y_, Kvel_z_;
+        std::vector<double> thrust_coeff_, volt_coeff_, thrust_original_;
 
         bool px4Ctrl;
         bool voltage_compensation_;
@@ -189,6 +192,7 @@ class pbtm_class
         double mass_; // mass of platform
 
         double m_a_, m_b_, m_c_, volt_k_, volt_b_;
+        double throttle_offset_, throttle_limit_;
 
         Eigen::Vector4d q_des, uav_attitude_q;
         Eigen::Vector4d cmdBodyRate_;  //{wx, wy, wz, Thrust}
@@ -256,10 +260,17 @@ class pbtm_class
             _nh.param<double>("volt_k", volt_k_, -0.1088);
             _nh.param<double>("volt_b", volt_b_, 2.1964);
 
+            _nh.param<double>("throttle_offset", throttle_offset_, 0.06);
+            _nh.param<double>("throttle_limit", throttle_limit_, 1);
+
             _nh.param<double>("mass", mass_, 195.5);
 
             Kpos_ = Vector3d(-Kpos_x_, -Kpos_y_, -Kpos_z_);
             Kvel_ = Vector3d(-Kvel_x_, -Kvel_y_, -Kvel_z_);
+
+            thrust_coeff_ = {m_a_, m_b_, m_c_};
+            volt_coeff_ = {volt_k_, volt_b_};
+            thrust_original_ = {norm_thrust_const_, norm_thrust_offset_};
 
             std::cout << "Position gains are: " << Kpos_.transpose() << std::endl;
             std::cout << "Velocity gains are: " << Kvel_.transpose() << std::endl;
@@ -376,6 +387,28 @@ _bypass_sub = _nh.subscribe<mavros_msgs::PositionTarget>(
                 KGRN, uav_id, KNRM, KBLU, _nwu_yaw_offset, KNRM);
 
             printf("%s[drone%d%s pbtm.h] constructed! \n", KGRN, uav_id, KNRM);
+
+            /** @brief offboard position controller class*/
+            // OffbCtrl pos_ctrl();
+
+            if (!px4Ctrl)
+            {
+                // std::unique_ptr<offboard_controller::OffbCtrl> pos_ctrl(
+
+                pos_ctrl = new offboard_controller::OffbCtrl(
+                    mass_,
+                    Kpos_,
+                    Kvel_,
+                    thrust_coeff_,
+                    volt_coeff_,
+                    max_fb_acc_,
+                    throttle_offset_,
+                    throttle_limit_,
+                    thrust_original_
+                );
+            }
+
+
             _drone_timer.start();
         }
 
@@ -423,6 +456,7 @@ _bypass_sub = _nh.subscribe<mavros_msgs::PositionTarget>(
         /** @brief Used by controller*/
 
         double getYawFromVel(const Eigen::Vector3d &vel) {return atan2(vel(1), vel(0));};
+        // defined in helper
         Eigen::Vector4d acc2quaternion(const Eigen::Vector3d &vector_acc, const double &yaw);
         Eigen::Vector4d rot2Quaternion(const Eigen::Matrix3d &R);
         Eigen::Matrix3d quat2RotMatrix(const Eigen::Vector4d &q);
