@@ -1,9 +1,7 @@
 <?xml version="1.0"?>
 <launch>
-    <arg name="_uav_id" value="$(env UAV_GROUPNAME)" />
-    <arg name="_uav_idx" value="$(env HOSTNAME)" />
-    <arg name="_fcu_url" value="/dev/ttyAML0:230400" />
-    <arg name="_gcs_url" value="udp://@192.168.31.194" /> <!-- zt laptop -->
+    <arg name="_fcu_url" value="/dev/ttyUSB0:2000000" />
+    <arg name="_gcs_url" value="udp://@192.168.31.193" /> <!-- zt laptop -->
     <group ns="drone0">
 
         <node pkg="pbtm" type="pbtm_node" name="pbtm_node" output="screen">
@@ -60,8 +58,6 @@
         <include file="$(find mavros)/launch/px4.launch">
             <arg name="fcu_url" value="$(arg _fcu_url)" />
             <arg name="gcs_url" value="$(arg _gcs_url)" />
-            <arg name="tgt_system" value="100" if="$(eval arg('_uav_idx') ==0)" />
-            <arg name="tgt_system" value="6" unless="$(eval arg('_uav_idx') ==0)" />
         </include>
 
 
