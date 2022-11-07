@@ -381,8 +381,8 @@ class pbtm_class
             /** @brief offboard position controller class*/
             // OffbCtrl pos_ctrl();
 
-            if (!px4Ctrl)
-            {
+            //if (!px4Ctrl)
+            //{
                 // std::unique_ptr<offboard_controller::OffbCtrl> pos_ctrl(
 
                 pos_ctrl = new offboard_controller::OffbCtrl(
@@ -396,7 +396,7 @@ class pbtm_class
                     throttle_limit_,
                     thrust_original_
                 );
-            }
+            //}
 
 
             _drone_timer.start();
