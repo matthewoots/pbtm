@@ -188,10 +188,14 @@ void pbtm_class::send_command()
 	_cmd.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
 	// pos_sp.type_mask = 3576; // Ignore Velocity, Acceleration and Yaw
 	// pos_sp.type_mask = 2552; // Ignore Velocity, Acceleration
-	_cmd.type_mask = 2496; // Ignore Acceleration
+	// _cmd.type_mask = 2496; // Ignore Acceleration
 	// pos_sp.type_mask = 3520; // Ignore Acceleration and Yaw
 	// pos_sp.type_mask = 3072; // Ignore Yaw
-	// pos_sp.type_mask = 2048;
+    // send trajectory p,v,a to px4 (v and a are used as feed-forward)
+    // https://docs.px4.io/main/en/flight_stack/controller_diagrams.html#combined-position-and-velocity-controller-diagram
+    // https://docs.px4.io/main/en/flight_modes/offboard.html#copter-vtol
+	_cmd.type_mask = 2048; // use p,v,a and ignore yaw_rate
+	
 	_local_pos_raw_pub.publish(_cmd);
 	}
 
@@ -211,6 +215,28 @@ void pbtm_class::send_command()
 		Eigen::Vector3d vel_error = uav_local_vel_enu - enu_cmd_vel;
 
 		Eigen::Vector3d a_des = pos_ctrl->calDesiredAcceleration(pos_error, vel_error, a_ref);
+
+		if (_send_acceleration_setpoint)
+		{
+			// send acceleration command
+			// works in sitl but not on physical hardware
+			mavros_msgs::PositionTarget pos_sp;
+			pos_sp.position.x = 0.0;
+			pos_sp.position.y = 0.0;
+			pos_sp.position.z = 0.0;
+			pos_sp.velocity.x = 0.0;
+			pos_sp.velocity.y = 0.0;
+			pos_sp.velocity.z = 0.0;
+			pos_sp.acceleration_or_force.x = a_des.x();
+			pos_sp.acceleration_or_force.y = a_des.y();
+			pos_sp.acceleration_or_force.z = a_des.z() - 9.81;
+			pos_sp.yaw = yaw_ref; // fixed yaw
+			pos_sp.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
+			pos_sp.type_mask = 2111; // 1+2+4+8+16+32+2048 i.e. only use acceleration setpoint
+			_local_pos_raw_pub.publish(pos_sp);
+			return;
+		}
+
 		q_des = pos_ctrl->calDesiredAttitude(a_des, yaw_ref);
 		cmdBodyRate_(3) = pos_ctrl->calDesiredThrottle(a_des, uav_attitude_q, battery_volt, voltage_compensation_);
 

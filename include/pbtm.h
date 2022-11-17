@@ -141,6 +141,7 @@ class pbtm_class
         bool _offboard_enabled = false;
         bool _setup = false;
         bool _set_takeoff_land_orientation;
+        bool _send_acceleration_setpoint;
         double takeoff_land_velocity;
         double _bypass_timeout;
         int uav_id, uav_task;
@@ -243,6 +244,7 @@ class pbtm_class
             _nh.param<double>("gains/v_y", Kvel_y_, 1.5);
             _nh.param<double>("gains/v_z", Kvel_z_, 3.3);
 
+            _nh.param<bool>("send_acceleration_setpoint", _send_acceleration_setpoint, false);
             _nh.param<bool>("use_px4ctrl", px4Ctrl, true);
             _nh.param<bool>("use_yawTarget", using_yawTgt, false);
             _nh.param<double>("max_acc", max_fb_acc_, 9.0);
