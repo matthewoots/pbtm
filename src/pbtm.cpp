@@ -53,8 +53,9 @@ void pbtm_class::bypass_callback(
 	
 	// If velocity is too low, then any noise will cause the yaw to fluctuate
 	// Restrict the yaw if velocity is too low
-	if (cmd_nwu.vel.norm() >= 0.15)
-		last_yaw = atan2(_norm_y,_norm_x);
+	// if (cmd_nwu.vel.norm() >= 0.15)
+	// 	last_yaw = atan2(_norm_y,_norm_x);
+	last_yaw = bypass_msg.yaw;
 
 	cmd_nwu.q = 
 		calculate_quadcopter_orientation(cmd_nwu.acc, last_yaw);
@@ -195,6 +196,7 @@ void pbtm_class::send_command()
     // https://docs.px4.io/main/en/flight_stack/controller_diagrams.html#combined-position-and-velocity-controller-diagram
     // https://docs.px4.io/main/en/flight_modes/offboard.html#copter-vtol
 	_cmd.type_mask = 2048; // use p,v,a and ignore yaw_rate
+	// _cmd.type_mask = 2552;
 	
 	_local_pos_raw_pub.publish(_cmd);
 	}
