@@ -127,10 +127,10 @@ class auto_publisher:
         print( "distance left (" + str(distance) + ")")
         
         # if (distance < 0.2):
-        if (distance < 0.50):
+        if (distance < 0.30):
             self.init = False
             # time.sleep(2)
-            # time.sleep(0.2)
+            time.sleep(0.05)
             return
 
 
