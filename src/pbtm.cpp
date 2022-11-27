@@ -53,12 +53,12 @@ void pbtm_class::bypass_callback(
 	
 	// If velocity is too low, then any noise will cause the yaw to fluctuate
 	// Restrict the yaw if velocity is too low
-	if (cmd_nwu.vel.norm() >= 0.15)
-		last_yaw = atan2(_norm_y,_norm_x);
+	// if (cmd_nwu.vel.norm() >= 0.15)
+	// 	last_yaw = atan2(_norm_y,_norm_x);
 	// last_yaw = bypass_msg.yaw;
 
-	cmd_nwu.q = 
-		calculate_quadcopter_orientation(cmd_nwu.acc, last_yaw);
+	// cmd_nwu.q = 
+	// 	calculate_quadcopter_orientation(cmd_nwu.acc, last_yaw);
 }
 
 

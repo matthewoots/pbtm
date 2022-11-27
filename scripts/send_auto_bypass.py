@@ -124,13 +124,13 @@ class auto_publisher:
         math.pow(self.cmd[1] - self.pose.y, 2) + \
         math.pow(self.cmd[2] - self.pose.z, 2))
 
-        print( "distance left (" + str(distance) + ")")
+        # print( "distance left (" + str(distance) + ")")
         
         # if (distance < 0.2):
-        if (distance < 0.30):
+        if (distance < 0.40):
             self.init = False
             # time.sleep(2)
-            time.sleep(0.05)
+            time.sleep(0.025)
             return
 
 
