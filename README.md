@@ -80,8 +80,11 @@ cp setup.bash ../../devel/setup.bash
 source devel/setup.bash
 ```
 ### Simple Run
-1. Launch `roslaunch pbtm sample_sitl.launch`
+1. Launch `roslaunch pbtm sample_sitl.launch`, make sure to set the parameter `use_px4ctrl` to `true` in order to publish mavros compatible commands.
 2. You will see an rviz pop up, with the drone identified as `drone0` after EKF2 has initialized
-3. `cd ~/catkin_ws/src/pbtm\scripts` and run `python send_target_takeoff.py` followed by `python send_target_random.py` after it has taken off
+3. `cd ~/catkin_ws/src/pbtm/scripts` and run `python send_target_takeoff.py 0` followed by `python send_target_random.py` after it has taken off
 
 Upstream can be found in https://github.com/matthewoots/pbtm
+
+### Troubleshooting
+1. For newer version of the PX4-Autopilot repository, the above instructions are outdated. Make sure to compile using `make px4_sitl gazebo_classic DONT_RUN=1` intead and make sure to modify the provided `setup.bash` to source the correct directories within the PX4-Autopilot repo. Refer to (ROS with Gazebo Classic Simulation)[https://docs.px4.io/main/en/simulation/ros_interface.html] for more infomation.
